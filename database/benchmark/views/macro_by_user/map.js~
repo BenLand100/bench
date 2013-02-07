@@ -1,0 +1,17 @@
+function(doc){
+    if(doc.type=='macro'){
+        if(doc.user){
+            if(doc.status=='complete'){
+                emit(doc.user,[doc.status,doc.memory,doc.eventsize]);
+            }
+            else if(doc.status=='waiting'){
+                emit(doc.user,[doc.status,0,0]);   
+            }
+            else if(doc.status=='failed'){
+                emit(doc.user,[doc.status,doc.reason,0]);
+            }
+            else
+                emit(doc.user,[doc.status,0,0]);
+        }
+    }
+}

@@ -1,0 +1,15 @@
+function(doc){
+    if(doc.type=='macro'){
+        if(doc.email){
+            if(doc.state=="complete"){
+                emit(doc.email,[doc.state,doc.memory,doc.eventsize]);
+            }
+            if(doc.state=="waiting"){
+                emit(doc.email,[doc.state,0,0]);   
+            }
+            if(doc.state=="failed"){
+                emit(doc.email,[doc.state,doc.reason,0]);
+            }
+        }
+    }
+}
