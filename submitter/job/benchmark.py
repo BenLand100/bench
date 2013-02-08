@@ -14,6 +14,7 @@
 ################################################
 
 import sys
+import smtplib
 import os
 from subprocess import Popen
 import time
@@ -56,12 +57,14 @@ def benchmark(macro,card):
     '''
     sTime = time.time() #start timing RAT
     logName = 'bench.'+os.path.basename(macro)+'.log'
+    #calling rat spawns rat_exe, need to call that directly ... urgh!
+    ratdir=os.environ['RATROOT']
+    ratsys=os.environ['RATSYSTEM']
+    ratexe='%s/bin/rat_%s' % (ratdir,ratsys)    
+    args = [ratexe,'-l',logName,'-N',str(card['n_events']),'-o',card['root_name'],macro]
+    for arg in args:
+        print 'arg:',arg,type(arg)
     try:
-        #calling rat spawns rat_exe, need to call that directly ... urgh!
-        ratdir=os.environ['RATROOT']
-        ratsys=os.environ['RATSYSTEM']
-        ratexe='%s/bin/rat_%s' % (ratdir,ratsys)
-        args = [ratexe,'-l',logName,'-N',card['n_events'],'-o',card['root_name'],macro]
         p = Popen(args=args, shell=False) #Start RAT
     except:
         print 'Must source RAT before running benchmark!' #RAT not avaliable
@@ -83,15 +86,17 @@ def benchmark(macro,card):
         except:
             print 'exiting loop early may overestimate time/event...\n'
             break
+    print 'here!?'
     p.communicate() #Check if RAT still running
     size = None
     outputDir = os.path.join(os.getcwd(),os.path.basename(macro)+'.log')#Output log file to cwd
     fileOut = open(outputDir,'w')
-    size = os.path.getsize(card['root_file'])
+    size = os.path.getsize(card['root_name'])
     fileOut.write('For macro %s and a test of %i events.\n' % (macro, card['n_events']))
     ratLog = open(logName,'r')
     writeFlag = 0
     timeInfo = {}
+    print 'here!?'
     for line in ratLog:
         if 'Processor usage statistics' in line:
             writeFlag = 1
@@ -100,11 +105,13 @@ def benchmark(macro,card):
             timeInfo['Total'] = float(line.split(':')[1].strip().split()[0])
             writeFlag = 0
         elif writeFlag == 1:
-            timeType = line.split(':')[0].strip()
-            timeInfo[timeType] = float(line.split(':')[1].strip().split()[0])
+            if 'sec/event' in line:
+                timeType = line.split(':')[0].strip()
+                timeInfo[timeType] = float(line.split(':')[1].strip().split()[0])
             fileOut.write(line)
         else:
             continue
+    print 'got here?'
     ratLog.close()
     evSize = size / card['n_events']
     # Write macro stats to log file:
@@ -138,35 +145,36 @@ def finishBench(card,finalInfo):
     '''Finish the benchmarking with an update of the DB and an email!
     '''
     email = ''
-    email += 'Results for job %s: \n'%card['doc_id']
-    email += 'Macro: %s \n'%card
+    email += 'Results for job %s/_utils/database.html?%s/%s: \n'%(card['db_server'],card['db_name'],card['doc_id'])
+    email += 'Macro: %s \n'%card['macro_name']
     email += 'Time per event %s seconds\n'%finalInfo['eventTime']['Total']
     email += 'Size per event %s bytes\n'%finalInfo['eventSize']
-    email += 'Max memory usage %s bytes\n'%finalInfo['memoryMax']
+    email += 'Max memory usage %s MB\n'%(finalInfo['memoryMax']/_scale['MB'])
     email += '\n'
     email += 'For production purposes:\n'
-    email += 'Events in 24hr job: %s \n' % (3600.*24 / finalInfo['eventTime']['Total'])
-    email += 'Events in 1.6GB file: %s \n' % (1.6*_scale['GB'] / finalInfo['eventSize'])
-    sendEmail(card_info['email_server'],card_info['email_user'],card_info['email_pswd'],card_info['email_list'],email)
+    email += 'Events in 24hr job: %s \n' % (int(round(3600.*24 / finalInfo['eventTime']['Total'])))
+    email += 'Events in 1.6GB file: %s \n' % (int(round(1.6*_scale['GB'] / finalInfo['eventSize'])))
+    sendEmail(card['email_server'],card['email_user'],card['email_pswd'],card['email_list'],email)
 
-    db = connectDB(card_info['db_server'],card_info['db_name'],card_info['db_auth'])
-    doc = db[card_info['doc_id']]
+    db = connectDB(card['db_server'],card['db_name'],card['db_auth'])
+    doc = db[card['doc_id']]
     doc['state']='completed'
     doc['event_size']=finalInfo['eventSize']
     doc['event_time']=finalInfo['eventTime']
     doc['memory_max']=finalInfo['memoryMax']
     db.save(doc)
 
-def failBench(card):
+def failBench(card,macro):
     '''Benchmarking failed, notify user!
     '''
     email = ''
-    email += 'Results for job %s: \n'%card['doc_id']
+    email += 'Results for job %s/_utils/database.html?%s/%s: \n'%(card['db_server'],card['db_name'],card['doc_id'])
+    email += 'Macro: %s \n'%macro
     email += 'Job failed\n'
-    sendEmail(card_info['email_server'],card_info['email_user'],card_info['email_pswd'],card_info['email_list'],email)
+    sendEmail(card['email_server'],card['email_user'],card['email_pswd'],card['email_list'],email)
 
-    db = connectDB(card_info['db_server'],card_info['db_name'],card_info['db_auth'])
-    doc = db[card_info['doc_id']]
+    db = connectDB(card['db_server'],card['db_name'],card['db_auth'])
+    doc = db[card['doc_id']]
     doc['state']='failed'
     db.save(doc)
 
@@ -193,12 +201,12 @@ def sendEmail(mailServer,mailUser,mailPass,mailList,body):
         smtp.ehlo()
         smtp.starttls()
         smtp.ehlo()
-        smtp.login(self.mailUser,self.mailPass)
-    smtp.sendmail(self.mailUser,self.mailList,message)
+        smtp.login(mailUser,mailPass)
+    smtp.sendmail(mailUser,mailList,message)
 
 def read_card(card_filename):
     cardfile = open(card_filename)
-    card = json.loads(cardfile)
+    card = json.load(cardfile)
     return card
 
 #############################################################################
@@ -209,10 +217,11 @@ if __name__ == '__main__':
     macro = sys.argv[2]
     card = read_card(card_file)
     if os.path.isfile(macro) == True: #Check macro exists
-        try:
-            benchmark(macro,card)
-        except:
-            failBench(card)
+        #try:
+        benchmark(macro,card)
+        #except:
+        #    failBench(card,macro)
+        #    sys.exit(1)
     else:
         print 'User must give macro directory to benchmark.py in command line' #No macro or invalid path!
         sys.exit()

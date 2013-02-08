@@ -10,10 +10,10 @@ class Database:
         self.name = name
         self.couch = couchdb.Server(host)
         if pswd==None:
-            self.couch.resource.credentials = ( user , getpass.getpass('Password: ') )
+            self.couch.resource.credentials = ( user , getpass.getpass('Database pswd: ') )
         else:
             self.couch.resource.credentials = ( user , pswd )
-        self.db = couch[name]
+        self.db = self.couch[name]
 
     def get_credentials(self):
         return self.couch.resource.credentials
@@ -23,6 +23,20 @@ class Database:
         '''
         rows = self.db.view('_design/benchmark/_view/macro_by_status',
                             key='waiting')
+        return rows
+
+    def get_failed_tasks(self):
+        '''Get a list of macros in the waiting state
+        '''
+        rows = self.db.view('_design/benchmark/_view/macro_by_status',
+                            key='failed')
+        return rows
+
+    def get_submitted_tasks(self):
+        '''Get a list of macros in the waiting state
+        '''
+        rows = self.db.view('_design/benchmark/_view/macro_by_status',
+                            key='submitted')
         return rows
             
     def get_attachment(self,id_or_doc,filename):

@@ -29,9 +29,11 @@ def verifyMacro(macro):
     reqCmd=[]
     canRun=True
     reason = ''#only useful if the macro is bad
+    macro_lines = ''
     for i in range(len(required_commands)):
         reqCmd.append(False)
     for i,line in enumerate(macro.readlines()):
+        macro_lines += line
         for cmd in bad_commands:
             if checkCommand(cmd,line):
                 badCmd=True
@@ -49,7 +51,7 @@ def verifyMacro(macro):
         if reqCmd[i]==False:
             canRun=False
             reason+='Missing command: %s \n'%(''.join(['%s ' % bit for bit in cmd]))
-    return canRun,reason
+    return canRun,macro_lines,reason
 
 def checkCommand(command,line):
     '''Match the line and groups, return true if a match

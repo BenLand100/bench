@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -l
 
 #################################
 # The job script, always submitted
@@ -14,13 +14,16 @@
 # arg2: card file
 # arg3: macro to benchmark
 
+echo $PATH
 source $1
+cat $1
+echo $PATH
 python benchmark.py $2 $3
 
 rtc=$?
 if [ $rtc -eq 0 ]
 then
-    return 0
+    exit 0
 else
-    return 10
+    exit 10
 fi
