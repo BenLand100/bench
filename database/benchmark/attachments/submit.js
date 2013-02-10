@@ -87,8 +87,11 @@ $(document).ready(function() {
                             $form.ajaxSubmit({
                                 url:  "/" + db_name + "/" + doc._id,
                                 success: function(response){
-                                    alert("Benchmarking request for:\n"+attachment_list+"has been made");
-                                    $form.find('input[name="_attachment"]').val()
+                                    if(fileList.length<10)
+                                        alert("Benchmarking request for:\n"+attachment_list+"has been made");
+                                    else
+                                        alert("Benchmarking request for "+fileList.length+" macros has been made");
+//                                    $form.find('input[name="_attachment"]').val();
                                 }
                             });
                         }
