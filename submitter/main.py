@@ -56,8 +56,8 @@ def submit_job(database,jobid,macro_name,macro,email_user,email_pswd):
     job.backend='Batch'
     job.submit()
     #json.dumps(jobcard)
-    doc['state']='submitted'
-    doc['fqid']=job.fqid
+    doc['info'][macro_name]['state']='submitted'
+    doc['info'][macro_name]['fqid']=job.fqid
     database.save_doc(doc)
 
 host = 'http://neutrino1.phys.susx.ac.uk:5984'

@@ -1,5 +1,5 @@
 <!-- 'HTML-style' HTML5 -->
-<!DOCTYPE html>
+<!DOCTYPE HTML>
 <html lang="en">
 
 <div id="header">
@@ -18,13 +18,13 @@
         <h1>Benchmarking Request</h1>
         <hr>
         
-	    <form name="macroform" id="macroform" action="">
+	    <form name="macroform" enctype="multipart/form-data" id="macroform" action="">
 	      <table>
 		    <tr>
 		      <td>
 		        <table>
 		          <tr><td><input type="text" name="email" id="email"> Email address</td></tr>
-                  <tr><td><input type="file" id="_attachments" name="_attachments" multiple /></td></tr>
+                  <tr><td><input type="file" id="_attachments[]" name="_attachments"  multiple="multiple"></td></tr>
                   <tr><td><select id="ratversion" name="ratversion"><option value="none">RAT version</option>
                         <option value="4">4</option>
                         <option value="4.1">4.1</option>
@@ -35,9 +35,6 @@
 		    </tr>
 	      </table>
 	    </form>
-        <form name="hideform" id="hideform" action="">
-        </form>
-	    <!--Each time append 1 new row to records//-->
       </div>
     </div>
   </div>

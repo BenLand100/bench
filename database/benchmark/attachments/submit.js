@@ -8,33 +8,65 @@ $(document).ready(function() {
 	$("button#post_doc").click(function(event) { //search when search button is clicked
 		$tgt = $(event.target);
 		$form = $tgt.parents("form#macroform");
+		$hiddenform = $tgt.parents("form#hiddenform");
 	    var email = $form.find("input#email").val();
         var ratVersion = $form.find("select#ratversion").val();
-        var attachment = $form.find("input#_attachments").val();
-
-        var attachmentType = attachment.split('.').pop()
-
-        if(!attachment || attachment.length==0 || attachmentType!='mac')
-            alert("Must specify a valid (.mac) attachment");
+        var attachment_list = '';
+        
+        var macroInfo = {}
+        
+        var x=document.getElementById("macroform");
+        fileList = [];
+        for (var i=0;i<x.length;i++)
+        {
+            if(x.elements[i].files){
+                $attachment = x.elements[i]
+                for(var j=0;j<x.elements[i].files.length;j++){
+                    console.log(x.elements[i].files[j].name);
+                    fileList.push(x.elements[i].files[j].name);
+                    macroInfo[x.elements[i].files[j].name] = {}
+                    macroInfo[x.elements[i].files[j].name]['state'] = 'waiting';
+//                    attachment_list += x.elements[i].files[j].name) + ' ';
+                }
+            }
+        }
+        console.log(fileList);
+        console.log(fileList.length);
+        var badType=false;
+        for(var i=0;i<fileList.length;i++){
+            var attachmentType = fileList[i].split('.').pop()
+            console.log(fileList[i] + ' ... '  + attachmentType);
+            attachment_list = attachment_list + fileList[i] + '\n';
+            if(attachmentType!='mac'){
+                badType=true;
+                console.log(attachmentType);
+            }
+        }
+        console.log('here');
+        if(fileList.length==0 || badType==true)
+            alert("Must specify valid (.mac) attachments");
         else if(!email || email.length==0 || email.indexOf("@")==-1)
             alert("Must specify a valid email address");
         else if(!ratVersion || ratVersion.length==0 || ratVersion=="none")
             alert("Must specify a RAT version");
         else{
-
+            
+            console.log('else?');
+            console.log($attachment.files);
             itemID = $.couch.newUUID();
 
             $.couch.db(db_name).saveDoc({
+                
                 "_id": itemID,
                 "email":email,
                 "ratVersion":ratVersion,
                 "type":"macro",
-                "state":"waiting"
+                "info":macroInfo,
             }, {
                 success: function(){      
                     
-                    html = '<td><input type="hidden" name="_rev"/></td>' +
-                        '<td><input type="hidden" name="_id"/></td>';
+                    html = '<td><input type="hidden" name="_id"></td>' + 
+                        '<td><input type="hidden" name="_rev"></td>';
                     $form.append(html);
                     
                     $.couch.db(db_name).openDoc(itemID, {        
@@ -55,7 +87,7 @@ $(document).ready(function() {
                             $form.ajaxSubmit({
                                 url:  "/" + db_name + "/" + doc._id,
                                 success: function(response){
-                                    alert("Benchmarking request for "+attachment+" has been made");
+                                    alert("Benchmarking request for:\n"+attachment_list+"has been made");
                                     $form.find('input[name="_attachment"]').val()
                                 }
                             });

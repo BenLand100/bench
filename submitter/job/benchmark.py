@@ -158,10 +158,10 @@ def finishBench(card,finalInfo):
 
     db = connectDB(card['db_server'],card['db_name'],card['db_auth'])
     doc = db[card['doc_id']]
-    doc['state']='completed'
-    doc['event_size']=finalInfo['eventSize']
-    doc['event_time']=finalInfo['eventTime']
-    doc['memory_max']=finalInfo['memoryMax']
+    doc['info'][card['macro_name']]['state']='completed'
+    doc['info'][card['macro_name']]['event_size']=finalInfo['eventSize']
+    doc['info'][card['macro_name']]['event_time']=finalInfo['eventTime']
+    doc['info'][card['macro_name']]['memory_max']=finalInfo['memoryMax']
     db.save(doc)
 
 def failBench(card,macro):
@@ -175,7 +175,7 @@ def failBench(card,macro):
 
     db = connectDB(card['db_server'],card['db_name'],card['db_auth'])
     doc = db[card['doc_id']]
-    doc['state']='failed'
+    doc[card['macro_name']]['state']='failed'
     db.save(doc)
 
 def connectDB(host,name,auth):
