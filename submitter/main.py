@@ -7,6 +7,7 @@
 import os
 import json
 import getpass
+import smtplib
 from base64 import b64encode
 from src import Database, Macro
 
@@ -60,10 +61,65 @@ def submit_job(database,jobid,macro_name,macro,email_user,email_pswd):
     doc['info'][macro_name]['fqid']=job.fqid
     database.save_doc(doc)
 
+def check_old(database,email_user,email_pswd):
+    rows = database.get_submitted_tasks()
+    for row in rows:
+        doc = database.get_doc(row.id)
+        macro_name = row.value
+        fqid = int(doc['info'][macro_name]['fqid'])
+        j = jobs(fqid)
+        try:
+            if j.status=='failed':
+                email = ''
+                email += 'Results for job %s/_utils/database.html?%s/%s: \n'%(database.host,database.name,row.id)
+                email += 'Macro: %s \n'%macro_name
+                email += 'Job failed\n'
+                errPath = os.path.join(j.outputdir,'stderr')
+                outPath = os.path.join(j.outputdir,'stdout')
+                if os.path.exists(errPath):
+                    email += '\nError:\n'
+                    for line in file(errPath,'r').readlines():
+                        email += line
+                if os.path.exists(outPath):
+                    email += '\nOutput:\n:'
+                    for line in file(outPath,'r').readlines():
+                        email += line
+                if not os.path.exists(errPath) and not os.path.exists(outPath):
+                    email += '\nNo output records!'
+                sendEmail('smtp.gmail.com',email_user,email_pswd,[doc['email']],email)
+                doc['info'][row.value]['state']='failed'
+                database.save_doc(doc)
+                jobs(fqid).remove()
+        except:
+            print 'no job with that fqid',fqid,type(fqid)
+
+def sendEmail(mailServer,mailUser,mailPass,mailList,body):
+    subject = 'Benchmarking results'
+    message = ''
+    message += 'From: %s\r\n' % mailUser
+    message += 'To: %s\r\n' % ', '.join(mailList)
+    message += 'Subject: %s\r\n\r\n' % subject
+        #if there is email to send, do it
+    message += '%s\n'%body
+    if mailServer == 'smtp.gmail.com':
+        port = 587
+        smtp = smtplib.SMTP(mailServer,port)
+    else:
+        smtp = smtplib.SMTP(mailServer)
+    if mailUser and mailPass:    
+        smtp.ehlo()
+        smtp.starttls()
+        smtp.ehlo()
+        smtp.login(mailUser,mailPass)
+    print message
+    smtp.sendmail(mailUser,mailList,message)
+
 host = 'http://neutrino1.phys.susx.ac.uk:5984'
 name = 'bench'
 user = 'mjmottram'
 database = Database.Database(host,name,user)
 email_user = raw_input('Email address: ')
 email_pswd = getpass.getpass('Email password: ')
+
+check_old(database,email_user,email_pswd)
 submit_waiting(database,email_user,email_pswd)

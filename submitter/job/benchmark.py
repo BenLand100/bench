@@ -83,6 +83,9 @@ def benchmark(macro,card):
             else:
                 mem.append(temp) #Add memory to list
                 cTime = time.time()
+            if temp > (3 * _scale['GB']):
+                print 'BENCHMARK: JOB EXCEEDS ALLOWED 3GB MEM USAGE: %s'%temp
+                raise Exception
         except:
             print 'exiting loop early may overestimate time/event...\n'
             break
@@ -91,7 +94,19 @@ def benchmark(macro,card):
     size = None
     outputDir = os.path.join(os.getcwd(),os.path.basename(macro)+'.log')#Output log file to cwd
     fileOut = open(outputDir,'w')
-    size = os.path.getsize(card['root_name'])
+    size = None
+    if os.path.exists(card['root_name']):
+        size = os.path.getsize(card['root_name'])
+    else:
+        #Really just want to raise an exception and shove a message here for
+        #the main script to find
+        print 'BENCH: OUTPUT ROOT FILE DOES NOT EXIST'
+        raise Exception
+        #message += 'Output ROOT file does not exist! \n'
+        #message += 'dir contents:\n'
+        #for f in os.listdir(os.getcwd()):
+        #    message += '%s \n' % f
+        #failBench(card,macro,message)
     fileOut.write('For macro %s and a test of %i events.\n' % (macro, card['n_events']))
     ratLog = open(logName,'r')
     writeFlag = 0
@@ -164,13 +179,15 @@ def finishBench(card,finalInfo):
     doc['info'][card['macro_name']]['memory_max']=finalInfo['memoryMax']
     db.save(doc)
 
-def failBench(card,macro):
+def failBench(card,macro,message=None):
     '''Benchmarking failed, notify user!
     '''
     email = ''
     email += 'Results for job %s/_utils/database.html?%s/%s: \n'%(card['db_server'],card['db_name'],card['doc_id'])
     email += 'Macro: %s \n'%macro
     email += 'Job failed\n'
+    if message != None:
+        email += message
     sendEmail(card['email_server'],card['email_user'],card['email_pswd'],card['email_list'],email)
 
     db = connectDB(card['db_server'],card['db_name'],card['db_auth'])
