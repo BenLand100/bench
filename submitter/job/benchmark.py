@@ -73,7 +73,7 @@ def benchmark(macro,card):
     cTime = time.time()
     # Sample memory for max of 10 mins:
     mem = []
-    while cTime - sTime < 600:
+    while True:
         try:
             time.sleep(1)
             temp = memory(pid)
@@ -85,6 +85,7 @@ def benchmark(macro,card):
                 cTime = time.time()
             if temp > (3 * _scale['GB']):
                 print 'BENCHMARK: JOB EXCEEDS ALLOWED 3GB MEM USAGE: %s'%temp
+                p.kill()
                 raise Exception
         except:
             print 'exiting loop early may overestimate time/event...\n'
