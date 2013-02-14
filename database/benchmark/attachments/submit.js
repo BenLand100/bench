@@ -10,6 +10,7 @@ $(document).ready(function() {
 		$form = $tgt.parents("form#macroform");
 		$hiddenform = $tgt.parents("form#hiddenform");
 	    var email = $form.find("input#email").val();
+	    var descr = $form.find("input#descr").val();
         var ratVersion = $form.find("select#ratversion").val();
         var attachment_list = '';
         
@@ -47,6 +48,8 @@ $(document).ready(function() {
             alert("Must specify valid (.mac) attachments");
         else if(!email || email.length==0 || email.indexOf("@")==-1)
             alert("Must specify a valid email address");
+        else if(!descr || descr.length==0 || descr.indexOf(" ")!=-1)
+            alert("Descriptor must be a single word (e.g. folder name)");
         else if(!ratVersion || ratVersion.length==0 || ratVersion=="none")
             alert("Must specify a RAT version");
         else{
@@ -59,6 +62,7 @@ $(document).ready(function() {
                 
                 "_id": itemID,
                 "email":email,
+                "descr":descr,
                 "ratVersion":ratVersion,
                 "type":"macro",
                 "info":macroInfo,
