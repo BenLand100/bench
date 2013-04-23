@@ -12,6 +12,7 @@ $(document).ready(function() {
 	    var email = $form.find("input#email").val();
 	    var descr = $form.find("input#descr").val();
         var ratVersion = $form.find("select#ratversion").val();
+        var commitHash = $form.find("input#commit_hash").val();
         var attachment_list = '';
         
         var macroInfo = {}
@@ -58,15 +59,16 @@ $(document).ready(function() {
             console.log($attachment.files);
             itemID = $.couch.newUUID();
 
-            $.couch.db(db_name).saveDoc({
-                
-                "_id": itemID,
-                "email":email,
-                "descr":descr,
-                "ratVersion":ratVersion,
-                "type":"macro",
-                "info":macroInfo,
-            }, {
+            bench_doc = {"_id":itemID,
+                         "email":email,
+                         "descr":descr,
+                         "ratVersion":ratVersion,                
+                         "type":"macro",
+                         "info":macroInfo}
+            if(commitHash.length!=0)
+                bench_doc["commitHash"]=commitHash;
+
+            $.couch.db(db_name).saveDoc(bench_doc,{
                 success: function(){      
                     
                     html = '<td><input type="hidden" name="_id"></td>' + 

@@ -163,6 +163,8 @@ def finishBench(card,finalInfo):
     email = ''
     email += 'Results for job %s/_utils/database.html?%s/%s: \n'%(card['db_server'],card['db_name'],card['doc_id'])
     email += 'Macro: %s \n'%card['macro_name']
+    if 'commit_hash' in card:
+        email += 'Git hash: %s \n'%card['commit_hash']
     email += 'Time per event %s seconds\n'%finalInfo['eventTime']['Total']
     email += 'Size per event %s bytes\n'%finalInfo['eventSize']
     email += 'Max memory usage %s MB\n'%(finalInfo['memoryMax']/_scale['MB'])
@@ -186,6 +188,8 @@ def failBench(card,macro,message=None):
     email = ''
     email += 'Results for job %s/_utils/database.html?%s/%s: \n'%(card['db_server'],card['db_name'],card['doc_id'])
     email += 'Macro: %s \n'%macro
+    if 'commit_hash' in card:
+        email += 'Git hash: %s \n'%card['commit_hash']
     email += 'Job failed\n'
     if message != None:
         email += message
