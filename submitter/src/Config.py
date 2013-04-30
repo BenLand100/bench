@@ -18,6 +18,8 @@ class Config(object):
         self.db_password = None
         self.email_address = None
         self.email_password = None
+        self.sw_directory = None
+        self.env_file = None
     def read_config(self,config_path):
         if not os.path.exists(config_path):
             raise Exception,'no config file'
@@ -25,7 +27,8 @@ class Config(object):
         config_parser.read(config_path)
         required_options = ['db_server','db_name','db_user',
                             'db_password','email_address',
-                            'email_password']
+                            'email_password','sw_directory']
+        optional_options = ['env_file']
         for option in required_options:
             if option not in config_parser.items('Main'):
                 raise Exception,'config parser missing option'
@@ -35,6 +38,11 @@ class Config(object):
         self.db_password = config_parser.get('Main','db_password')
         self.email_address = config_parser.get('Main','email_address')
         self.email_password = config_parser.get('Main','email_password')
+        self.sw_directory = config_parser.get('Main','sw_directory')
+        #optional arguments
+        for option in optional_options:
+            if option in config_parser.items('Main'):
+                setattr(self,option,config_parser.get('Main',option))
     def parse_options(self,options):
         #should fail if any option (except passwords) are not provided
         self.db_server = options.db_server
@@ -43,4 +51,6 @@ class Config(object):
         self.db_password = options.db_password
         self.email_address = options.email_address
         self.email_password = options.email_password
+        self.sw_directory = options.sw_directory
+        self.env_file = options.env_file
         

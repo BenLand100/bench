@@ -11,12 +11,11 @@
 
 #Expects three arguments, no arg parser
 # arg1: software script to source
-# arg2: rat version to source
-# arg3: card file
-# arg4: macro to benchmark
+# arg2: card file
+# arg3: macro to benchmark
 
-source $1 env_rat-${2}.sh
-python benchmark.py $3 $4
+source $1
+python benchmark.py $2 $3
 
 rtc=$?
 if [ $rtc -eq 0 ]

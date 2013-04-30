@@ -31,7 +31,7 @@ def create_job_card(database,doc,email_user,email_pswd,macro_name):
         card_info['commit_hash'] = doc['commitHash']
     return card_info
     
-def submit_waiting(database,email_user,email_pswd):
+def submit_waiting(database,config):
     rows = database.get_waiting_tasks()
     for row in rows:
         macro_name = row.value
@@ -40,11 +40,53 @@ def submit_waiting(database,email_user,email_pswd):
         if not can_run:
             print reason
         else:
-            submit_job(database,row.id,row.value,macro_str,email_user,email_pswd)
+            submit_job(database,row.id,row.value,macro_str,config)
 
-def submit_job(database,jobid,macro_name,macro,email_user,email_pswd):
+def get_job_environment(envName,swDir,ratVersion,commitHash=None,envFile=None):
+    #create an environment file to use and ship with the job
+    rat_env_file = os.path.join(swDir,'env_rat-%s.sh'%ratVersion)
+    local_env = ''
+    job_env = ''
+    fout = file(envName,'w')
+    if not os.path.exists(rat_env_file):
+        error = 'RAT environment file not found: %s'%(rat_env_file)
+        raise Exception,error
+    rat_env_lines = file(rat_env_file,'r').readlines()
+    if envFile:
+        if not os.path.exists(envFile):
+            error = 'Local environment file not found: %s'%(envFile)
+            raise Exception,error
+        temp = file(envFile,'r').readlines()        
+        for temp_line in temp:
+            line = temp_line.strip()
+            if line!='' and line==None:
+                local_env += temp_line
+    if commitHash==None:
+        #just need the basic rat env file, plus extras to work on feynman
+        job_env += '#!/bin/bash -l\n'
+        job_env += local_env
+        for line in rat_env_lines:
+            job_env += line
+    else:
+        #need to configure the shipped snapshot
+        job_env += '#!/bin/bash -l\n'
+        job_env += local_env
+        for line in rat_env_lines[:1]:
+            #skip the last line - sourcing the rat/env.sh
+            job_env += line
+        job_env += 'jobdir=$(pwd)\n'
+        job_env += 'tar -zxvf rat.*\n'
+        job_env += 'cd rat\n'
+        job_env += './configure\n'
+        job_env += 'source env.sh\n'
+        job_env += 'scons\n'
+        job_env += 'cd ${jobdir}\n'
+    fout.write(job_env)
+    fout.close()
+
+def submit_job(database,jobid,macro_name,macro,config):
     doc = database.get_doc(jobid)
-    jobcard = create_job_card(database,doc,email_user,email_pswd,macro_name)
+    jobcard = create_job_card(database,doc,config.email_address,config.email_password,macro_name)
     cardfile = file('job/card.json','w')
     cardfile.write(json.dumps(jobcard))
     cardfile.close()
@@ -56,24 +98,26 @@ def submit_job(database,jobid,macro_name,macro,email_user,email_pswd):
     job.application = Executable(exe=(os.path.join(os.getcwd(),'job/job.sh')))
     commitHash = None
     ratVersion = str(doc['ratVersion'])
+    #get the job environment and write a temp file for it
+    temp_env_name = 'temp_job_env.sh'
+    write_job_environment(temp_env_name,config.sw_directory,ratVersion,commitHash,config.env_file)
     if 'commitHash' in doc:
         commitHash = doc['commitHash']
         zipFileName = RATUtil.MakeRatSnapshot(commitHash,'rat/',os.path.expanduser('~/gaspCache'))
         print zipFileName,type(zipFileName)
         zipFileName = str(zipFileName)
         print zipFileName,type(zipFileName)
-        job.application.args = ['environment_dev.sh','%s.dev'%(ratVersion),'card.json','macro.mac']
-        job.inputsandbox += ['job/environment_dev.sh','job/card.json','job/macro.mac','job/benchmark.py','job/env_rat-%s.dev.sh'%(ratVersion),zipFileName]
+        job.inputsandbox += [temp_env_name,'job/card.json','job/macro.mac','job/benchmark.py','job/env_rat-%s.dev.sh'%(ratVersion),zipFileName]
     else:
-        job.application.args = ['environment_fix.sh','%s'%(ratVersion),'card.json','macro.mac']
-        job.inputsandbox += ['job/environment_fix.sh','job/card.json','job/macro.mac','job/benchmark.py','job/env_rat-%s.sh'%(ratVersion)]
+        job.inputsandbox += [temp_env_name,'job/card.json','job/macro.mac','job/benchmark.py','job/env_rat-%s.sh'%(ratVersion)]
+    job.application.args = [temp_env_name.split('/')[-1],'card.json','macro.mac']
     job.submit()
     #json.dumps(jobcard)
     doc['info'][macro_name]['state']='submitted'
     doc['info'][macro_name]['fqid']=job.fqid
     database.save_doc(doc)
 
-def check_old(database,email_user,email_pswd):
+def check_old(database,config)
     rows = database.get_submitted_tasks()
     for row in rows:
         try:
@@ -111,7 +155,7 @@ def check_old(database,email_user,email_pswd):
                             email += line
                 if not os.path.exists(errPath) and not os.path.exists(outPath):
                     email += '\nNo output records!'
-                sendEmail('smtp.gmail.com',email_user,email_pswd,[doc['email']],email)
+                sendEmail('smtp.gmail.com',config.email_address,config.email_password,[doc['email']],email)
                 doc['info'][row.value]['state']='failed'
                 database.save_doc(doc)
                 jobs(fqid).remove()
@@ -159,19 +203,21 @@ if __name__=="__main__":
     parser.add_option('-n',dest='db_name',help='Database name')
     parser.add_option('-u',dest='db_user',help='Database user')
     parser.add_option('-p',dest='db_password',help='Database password',default=None)
-    parser.add_option('-e',dest='email_address',help='Email address')
+    parser.add_option('-a',dest='email_address',help='Email address')
     parser.add_option('-x',dest='email_password',help='Email password',default=None)
+    parser.add_option('-s',dest='sw_directory',help='Snoing install directory')
+    parser.add_option('-e',dest='env_file',help='Extra environment required for backend',default=None)
     (options, args) = parser.parse_args()
     config = Config.Config()
     if options.config:
-        config_options = config.read_config(options.config)
+        config.read_config(options.config)
     else:
-        config_options = config.parse_options(options)
-    database = Database.Database(config_options.db_server,config_options.db_name,
-                                 config_options.db_user,config_options.db_password)
+        config.parse_options(options)
+    database = Database.Database(config.db_server,config.db_name,
+                                 config.db_user,config.db_password)
     try:
-        emailCheck('smtp.gmail.com',email_user,email_password)
+        emailCheck('smtp.gmail.com',config.email_address,config.email_password)
     except:
         raise Exception,'Bad email password'
-    check_old(database,email_user,email_password)
-    submit_waiting(database,email_user,email_password)
+    check_old(database,config)
+    submit_waiting(database,config)
