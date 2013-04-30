@@ -9,7 +9,7 @@ import json
 import getpass
 import smtplib
 from base64 import b64encode
-from src import Database, Macro
+from src import Database, Macro, Config
 from GangaSNO.Lib import RATUtil
 
 def create_job_card(database,doc,email_user,email_pswd,macro_name):
@@ -116,8 +116,10 @@ def check_old(database,email_user,email_pswd):
                 database.save_doc(doc)
                 jobs(fqid).remove()
 
-def emailCheck(mailServer,mailUser,mailPass):
+def emailCheck(mailServer,mailUser,mailPass=None):
     '''Just check we can login'''
+    if mailPass==None:
+        getpass.getpass('Email password: ')
     if mailServer == 'smtp.gmail.com':
         port = 587
         smtp = smtplib.SMTP(mailServer,port)
@@ -150,17 +152,26 @@ def sendEmail(mailServer,mailUser,mailPass,mailList,body):
     print message
     smtp.sendmail(mailUser,mailList,message)
 
-host = 'http://neutrino1.phys.susx.ac.uk:5984'
-name = 'timebench'
-user = 'mjmottram'
-database = Database.Database(host,name,user)
-email_user = raw_input('Email address: ')
-email_pswd = getpass.getpass('Email password: ')
-try:
-    emailCheck('smtp.gmail.com',email_user,email_pswd)
-except:
-    print 'Bad email password'
-    sys.exit(1)
-
-check_old(database,email_user,email_pswd)
-submit_waiting(database,email_user,email_pswd)
+if __name__=="__main__":
+    parser = optparse.OptionParser()
+    parser.add_option('-c',dest='config',help="Specify path to config file (overrides other options)")
+    parser.add_option('-s',dest='db_server',help='Database server')
+    parser.add_option('-n',dest='db_name',help='Database name')
+    parser.add_option('-u',dest='db_user',help='Database user')
+    parser.add_option('-p',dest='db_password',help='Database password',default=None)
+    parser.add_option('-e',dest='email_address',help='Email address')
+    parser.add_option('-x',dest='email_password',help='Email password',default=None)
+    (options, args) = parser.parse_args()
+    config = Config.Config()
+    if options.config:
+        config_options = config.read_config(options.config)
+    else:
+        config_options = config.parse_options(options)
+    database = Database.Database(config_options.db_server,config_options.db_name,
+                                 config_options.db_user,config_options.db_password)
+    try:
+        emailCheck('smtp.gmail.com',email_user,email_password)
+    except:
+        raise Exception,'Bad email password'
+    check_old(database,email_user,email_password)
+    submit_waiting(database,email_user,email_password)
