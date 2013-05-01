@@ -1,5 +1,5 @@
 ############################################
-# Config.py:
+# BenchConfig.py:
 #    Class containing the config options
 # for benchmarking.
 # Author: Matt Mottram 
@@ -10,7 +10,7 @@ import os
 import ConfigParser
 import optparse
 
-class Config(object):
+class BenchConfig(object):
     def __init__(self):
         self.db_server = None
         self.db_name = None
@@ -29,9 +29,13 @@ class Config(object):
                             'db_password','email_address',
                             'email_password','sw_directory']
         optional_options = ['env_file']
-        for option in required_options:
-            if option not in config_parser.items('Main'):
-                raise Exception,'config parser missing option'
+        missing_options = []
+        for option in required_options:            
+            if not config_parser.has_option('Main',option):
+                missing_options.append(option)
+        if len(missing_options)!=0:
+            error = 'config parser missing options %s'%(missing_options)
+            raise Exception,error
         self.db_server = config_parser.get('Main','db_server')
         self.db_name = config_parser.get('Main','db_name')
         self.db_user = config_parser.get('Main','db_user')

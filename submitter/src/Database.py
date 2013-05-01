@@ -2,7 +2,7 @@ import getpass
 import couchdb
 from base64 import b64encode
 
-class Database:
+class Database(object):
     '''The main class for interacting with the database
     '''
     def __init__(self,host,name,user,pswd=None):

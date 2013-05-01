@@ -5,12 +5,14 @@
 ############################################
 
 import os
+import sys
 import json
 import getpass
 import smtplib
+import optparse
 from base64 import b64encode
-from src import Database, Macro, Config
-from GangaSNO.Lib import RATUtil
+from src import Database, Macro, BenchConfig
+from GangaSNOplus.Lib import RATUtil
 
 def create_job_card(database,doc,email_user,email_pswd,macro_name):
     '''create a job card for each job
@@ -42,7 +44,7 @@ def submit_waiting(database,config):
         else:
             submit_job(database,row.id,row.value,macro_str,config)
 
-def get_job_environment(envName,swDir,ratVersion,commitHash=None,envFile=None):
+def write_job_environment(envName,swDir,ratVersion,commitHash=None,envFile=None):
     #create an environment file to use and ship with the job
     rat_env_file = os.path.join(swDir,'env_rat-%s.sh'%ratVersion)
     local_env = ''
@@ -71,7 +73,7 @@ def get_job_environment(envName,swDir,ratVersion,commitHash=None,envFile=None):
         #need to configure the shipped snapshot
         job_env += '#!/bin/bash -l\n'
         job_env += local_env
-        for line in rat_env_lines[:1]:
+        for line in rat_env_lines[:-1]:
             #skip the last line - sourcing the rat/env.sh
             job_env += line
         job_env += 'jobdir=$(pwd)\n'
@@ -97,19 +99,20 @@ def submit_job(database,jobid,macro_name,macro,config):
     job.backend='Batch'
     job.application = Executable(exe=(os.path.join(os.getcwd(),'job/job.sh')))
     commitHash = None
+    if 'commitHash' in doc:
+        commitHash = doc['commitHash']
     ratVersion = str(doc['ratVersion'])
     #get the job environment and write a temp file for it
     temp_env_name = 'temp_job_env.sh'
     write_job_environment(temp_env_name,config.sw_directory,ratVersion,commitHash,config.env_file)
     if 'commitHash' in doc:
-        commitHash = doc['commitHash']
         zipFileName = RATUtil.MakeRatSnapshot(commitHash,'rat/',os.path.expanduser('~/gaspCache'))
         print zipFileName,type(zipFileName)
         zipFileName = str(zipFileName)
         print zipFileName,type(zipFileName)
-        job.inputsandbox += [temp_env_name,'job/card.json','job/macro.mac','job/benchmark.py','job/env_rat-%s.dev.sh'%(ratVersion),zipFileName]
+        job.inputsandbox += [temp_env_name,'job/card.json','job/macro.mac','job/benchmark.py',zipFileName]
     else:
-        job.inputsandbox += [temp_env_name,'job/card.json','job/macro.mac','job/benchmark.py','job/env_rat-%s.sh'%(ratVersion)]
+        job.inputsandbox += [temp_env_name,'job/card.json','job/macro.mac','job/benchmark.py']
     job.application.args = [temp_env_name.split('/')[-1],'card.json','macro.mac']
     job.submit()
     #json.dumps(jobcard)
@@ -117,7 +120,7 @@ def submit_job(database,jobid,macro_name,macro,config):
     doc['info'][macro_name]['fqid']=job.fqid
     database.save_doc(doc)
 
-def check_old(database,config)
+def check_old(database,config):
     rows = database.get_submitted_tasks()
     for row in rows:
         try:
@@ -205,10 +208,10 @@ if __name__=="__main__":
     parser.add_option('-p',dest='db_password',help='Database password',default=None)
     parser.add_option('-a',dest='email_address',help='Email address')
     parser.add_option('-x',dest='email_password',help='Email password',default=None)
-    parser.add_option('-s',dest='sw_directory',help='Snoing install directory')
+    parser.add_option('-w',dest='sw_directory',help='Snoing install directory')
     parser.add_option('-e',dest='env_file',help='Extra environment required for backend',default=None)
     (options, args) = parser.parse_args()
-    config = Config.Config()
+    config = BenchConfig.BenchConfig()
     if options.config:
         config.read_config(options.config)
     else:
