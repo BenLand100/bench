@@ -3,11 +3,7 @@ var db_name = split_path[split_path.length-4]
 $db = $.couch.db(db_name);
 $("#header").load("header.html");
 
-function run_search(ratv){
-        html = "<table class=\"small_table\"><thead><tr><th>RAT V</th><th>Commit hash</th><th>Descriptor</th><th>Macro</th>"+
-            "<th>Mem (MB)</th><th>Time (s)</th><th>Ev (kB)</th><th>Est. ev/24hr</th><th>Est. 10k (GB)</th>"+
-            "</tr></thead><tbody>";
-		$("#results").append(html);
+function run_search(ratv,show_s,show_f){
     var start_key = [ratv,null,null,null];
     var end_key   = [ratv,"zzz","zzz","zzz"];
     view_name = "benchmark/results?startkey=[";
@@ -31,16 +27,27 @@ function run_search(ratv){
                 var desc = row.key[1];
                 var name = row.key[2];
                 var hash = row.key[3];
-                html = "<tr><td>"+ratv+"</td>";
+                html = "";
+                if (row.value["state"]=="failed"){
+                    if (show_f != true)
+                        continue;
+                    html += "<tr class=\"failed\">";
+                }
+                else{
+                    if (show_s != true)
+                        continue;
+                    html += "<tr class=\"success\">";
+                }
+                html += "<td>"+ratv+"</td>";
                 if (hash!=null)
                     html+= "<td>"+hash+"<td>";
                 else
                     html+= "<td></td>";
                 html+= "<td>"+desc+"</td>";
                 html+= "<td>"+name+"</td>";
-                if (row.value=={}){
+                if (row.value["state"]=="failed"){
                     //failed!
-                    html+= "<td colspan=5 background-color=#ee3000></td>";
+                    html+= "<td colspan=5 background=#ee3000>macro failed</td>";
                 }
                 else{
                     //success!
@@ -57,16 +64,12 @@ function run_search(ratv){
                 }
                 html += "</tr>";                
 		        $("#results").append(html);
-                console.log('append '+ratv);
             }
         },        
 		error: function(e) {
 		    alert('Error loading from database: ' + e + ' DB: '+db_name);
 	    }
     });
-        html = "</tbody></table>";
-		$("#results").append(html)
-    console.log('end '+ratv);
 }
         
 
@@ -76,13 +79,18 @@ $(document).ready(function() {
 	$("button#runsearch").click(function(event) { //search when search button is clicked
 		$tgt = $(event.target);
 		$form = $tgt.parents("form#searchform");
-		$hiddenform = $tgt.parents("form#searchform");
         var ratVersion = $form.find("select#ratversion").val();
+        var success = $form.find("input#success")[0].checked;
+        var failed = $form.find("input#failed")[0].checked;        
 
         $("#results").empty(); //empty previous search records
+        html = "<tr><th>RAT V</th><th>Commit hash</th><th>Descriptor</th><th>Macro</th>"+
+            "<th>Mem (GB)</th><th>Time (s)</th><th>Ev (kB)</th><th>Est. ev/24hr</th><th>Est. 10k (GB)</th>"+
+            "</tr></thead>";
+		$("#results").append(html);
 
         for(var i in ratVersion){
-            run_search(ratVersion[i]);
+            run_search(ratVersion[i],success,failed);
         }
 
     });
