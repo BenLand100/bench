@@ -2,7 +2,7 @@ function(doc){
     if(doc.type=='macro'){
         commitHash = null;
         if(doc.commitHash){
-            commitHast = doc.commitHash;    
+            commitHash = doc.commitHash;    
         }
         if(doc.info){
             for(var name in doc.info){
