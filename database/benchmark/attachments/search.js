@@ -40,7 +40,7 @@ function run_search(ratv,show_s,show_f){
                 }
                 html += "<td>"+ratv+"</td>";
                 if (hash!=null)
-                    html+= "<td>"+hash+"<td>";
+                    html+= "<td>"+hash+"</td>";
                 else
                     html+= "<td></td>";
                 html+= "<td>"+desc+"</td>";
@@ -85,7 +85,7 @@ $(document).ready(function() {
 
         $("#results").empty(); //empty previous search records
         html = "<tr><th>RAT V</th><th>Commit hash</th><th>Descriptor</th><th>Macro</th>"+
-            "<th>Mem (GB)</th><th>Time (s)</th><th>Ev (kB)</th><th>Est. ev/24hr</th><th>Est. 10k (GB)</th>"+
+            "<th>Mem (MB)</th><th>Time (s)</th><th>Ev (kB)</th><th>Est. ev/24hr</th><th>Est. 10k (GB)</th>"+
             "</tr></thead>";
 		$("#results").append(html);
 
