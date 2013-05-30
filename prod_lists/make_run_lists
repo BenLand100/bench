@@ -1,0 +1,368 @@
+#!/usr/bin/env python
+##################################
+# make_run_lists
+#  author: Matt Mottram
+#          m.mottram@sussex.ac.uk
+#
+# Script to make production lists from 
+# the benchmarking database and the 
+# mac/production directory of a selected
+# version of rat.  
+#
+# Background numbers (<int/ext)_n_year)
+# should be updated to reflect the latest
+# background expectations.
+#
+# Must first have bench/submitter/src in
+# your PYTHONPATH
+#
+##################################
+
+import os 
+import copy
+import math
+import optparse
+import Database
+import getpass
+
+############################
+#THE MAX SIZES AND TIMES:
+_kB = 1024
+_MB = _kB*1024
+_GB = _MB*1024
+max_size = 1.6*_GB
+max_time = 20*3600
+
+ext_n_year_bi_tl = {"av":{"Bi214":1.29e7,
+                          "Tl208":1.38e6},
+                    "av_innerdust":{"Bi214":3.9e4,
+                                    "Tl208":2.34e4},
+                    "av_outerdust":{"Bi214":7.0e5,
+                                    "Tl208":4.2e5},
+                    "exwater":{"Bi214":1.18e8,
+                               "Tl208":3.74e6},
+                    "hdropes":{"Bi214":4.06e6,
+                               "Tl208":2.3e6},
+                    "pmt":{"Bi214":3.7e11,
+                           "Tl208":4.2e10}
+                    }
+
+ext_n_year = {"av":{"U238":1.29e7,
+                    "Th232":3.83e6},
+              "av_innerdust":{"U238":7.0e5,
+                              "Th232":6.5e4},
+              "av_outerdust":{"U238":7.0e5,
+                              "Th232":1.17e6},
+              "exwater":{"U238":1.18e8,
+                         "Th232":1.04e7},
+              "hdropes":{"U238":4.06e6,
+                         "Th232":6.39e6},
+              "pmt":{"U238":3.7e11,
+                     "Th232":1.17e11}
+              }
+
+water_int_n_year = {"U238":9.96e6,
+                    "Th232":2.94e5,
+                    "Signal":1e4}
+
+solar_int_n_year = {"U238":4898,
+                    "Th232":682,
+                    "Bi210":42671,
+                    "Ar39":85483,
+                    "C14":4.08e9,
+                    "K40":8479,
+                    "Kr85":85817,
+                    "Pb210":42671,
+                    "Po210":1.70e7
+                    }
+
+te_int_n_year = {"U238":755616,
+                 "Th232":28149,
+                 "Agm110":1e4,
+                 "Ar39":85483,
+                 "Ar42":1e4,
+                 "Bi210":799389,#Chen override
+                 "C14":4.08e9,
+                 "Co56":1e4,
+                 "Co60":1e4,
+                 "Ga68":1e4,
+                 "K42":1e4,
+                 "Kr85":85817,
+                 "Na22":1e4,
+                 "Pb210":793389,#Chen override
+                 "Po210":1.778e7,#Chen override
+                 "Rb82":1e4,
+                 "Rb84":1e4,
+                 "Rh102":1e4,
+                 "Rh106":1e4,
+                 "Sb124":1e4,
+                 "Sc46":1e4,
+                 "Sr82":1e4,
+                 "Sr90":1e4,
+                 "Ti44":1e4,
+                 "Y88":1e4,
+                 "Y90":1e4,
+                 "Zr88":1e4}
+
+#map gives a mapping for each internal background to:
+# [0]: chain (i.e. U/Th)
+# [1]: branching ratio
+int_map = {"Ac228":["Th232",1.0],
+           "Bi210":["U238",1.0],
+           "Bi212":["Th232",0.64],#beta side
+           "Bi212_alpha":["Th232",0.36],
+           "Bi214":["U238",1.0],
+           "Pb210":["U238",1.0],
+           "Pb212":["Th232",1.0],
+           "Pb214":["U238",1.0],
+           "Po210":["U238",1.0],
+           "Po212":["Th232",0.64],
+           "Po214":["U238",1.0],#actually 99.98%
+           "Po216":["Th232",1.0],
+           "Po218":["U238",1.0],
+           "Ra224":["Th232",1.0],
+           "Ra226":["U238",1.0],
+           "Ra226_alpha":["U238",1.0],
+           "Ra228":["Th232",1.0],
+           "Rn220":["Th232",1.0],
+           "Rn222":["U238",1.0],
+           "Th228":["Th232",1.0],
+           "Th230":["U238",1.0],
+           "Th232":["Th232",1.0],
+           "Th234":["U238",1.0],
+           "Tl208":["Th232",0.36],
+           "U234":["U238",1.0],
+           "U238":["U238",1.0]}
+
+basedir = None
+rat_version = None
+db = None
+
+
+def get_n_events_water(fname):    
+    print "\n\n=======WATER=========\n\n"
+    fout = file(fname,"w")
+    fout.write('{\n')
+    fout.write('"rat_v": "4.2.1",\n')
+    fout.write('"modules" : {\n')
+    phase_name='water'
+    for fname in os.listdir(os.path.join(basedir,'water')):
+        decay = None
+        chain = None
+        frac = None
+        n_ev = None
+        if 'Signal' in fname or 'Reactor' in fname or 'Solar' in fname:
+            #signal run - just do 100k events
+            n_ev = water_int_n_year["Signal"]
+            decay = "SIGNAL"
+        elif is_ext(fname):
+            #external background
+            ext_type = is_ext(fname)
+            decay,chain,frac = which_chain(fname,ext_type)
+            n_ev = ext_n_year[ext_type][chain] * frac
+        else:
+            #assume internal background
+            ext_type = None
+            decay,chain,frac = which_chain(fname,None)            
+            n_ev = water_int_n_year[chain] * frac
+        ev_size,ev_time = get_db_results([rat_version,phase_name,fname])
+        if ev_size:
+            ev_per_run,n_run,size_run,time_run = get_macro_info(ev_size,ev_time,n_ev)
+#            print fname,'\t',chain,n_ev,'\tbytes',ev_size,'\tsec',ev_time,\
+#                "\tNEV",ev_per_run,"\tNRUN",n_run,"\tsize",size_run,"\ttime",time_run
+            if n_run > 100:
+                scale = int(math.log10(n_run))-1
+                new_n_run = int(n_run / 10**scale)
+                new_n_ev = int(n_ev / 10**scale)
+                print "fname",fname,"run:",n_run,new_n_run,"ev:",n_ev,new_n_ev,"check:",n_run/new_n_run,n_ev/new_n_ev
+                n_ev = new_n_ev
+            mod_name = 'Water'+class_from_mac(fname)
+            fout.write('"%s":{"n_ev":%s, "ev_per_run":%s},\n'%(mod_name,int(n_ev),ev_per_run))
+    fout.write("}\n")
+    fout.write("}\n")
+    fout.close()
+
+def get_n_events_solar(fname):    
+    print "\n\n=======SOLAR=========\n\n"
+    fout = file(fname,"w")
+    fout.write('{\n')
+    fout.write('"rat_v": "4.2.1",\n')
+    fout.write('"modules" : {\n')
+    phase_name='solar'
+    for fname in os.listdir(os.path.join(basedir,'solar')):
+        decay = None
+        chain = None
+        frac = None
+        n_ev = None
+        if is_ext(fname):
+            #external background
+            ext_type = is_ext(fname)
+            decay,chain,frac = which_chain(fname,ext_type)
+            n_ev = ext_n_year[ext_type][chain] * frac
+        else:
+            #assume internal background
+            ext_type = None
+            decay,chain,frac = which_chain(fname,None)
+            if decay in solar_int_n_year:
+                n_ev = solar_int_n_year[decay]
+            elif chain!=None:
+                n_ev = solar_int_n_year[chain] * frac
+            else:
+                #not a chain
+                print "FUCK"
+        ev_size,ev_time = get_db_results([rat_version,phase_name,fname])
+        if ev_size:
+            ev_per_run,n_run,size_run,time_run = get_macro_info(ev_size,ev_time,n_ev)
+#            print fname,'\t',chain,n_ev,'\tbytes',ev_size,'\tsec',ev_time,\
+#                "\tNEV",ev_per_run,"\tNRUN",n_run,"\tsize",size_run,"\ttime",time_run
+            if n_run > 100:
+                scale = int(math.log10(n_run))-1
+                new_n_run = int(n_run / 10**scale)
+                new_n_ev = int(n_ev / 10**scale)
+                print "fname",fname,"run:",n_run,new_n_run,"ev:",n_ev,new_n_ev,"check:",n_run/new_n_run,n_ev/new_n_ev
+                n_ev = new_n_ev
+            mod_name = 'Solar'+class_from_mac(fname)
+            fout.write('"%s":{"n_ev":%s, "ev_per_run":%s},\n'%(mod_name,int(n_ev),ev_per_run))
+    fout.write("}\n")
+    fout.write("}\n")
+    fout.close()
+
+def get_n_events_te(fname):    
+    print "\n\n=======TE130=========\n\n"
+    fout = file(fname,"w")
+    fout.write('{\n')
+    fout.write('"rat_v": "4.2.1",\n')
+    fout.write('"modules" : {\n')
+    phase_name='teloaded'
+    for fname in os.listdir(os.path.join(basedir,'teloaded')):
+        decay = None
+        chain = None
+        frac = None
+        n_ev = None
+        if is_ext(fname):
+            #external background
+            ext_type = is_ext(fname)
+            decay,chain,frac = which_chain(fname,ext_type)
+            n_ev = ext_n_year[ext_type][chain] * frac
+        else:
+            #assume internal background
+            ext_type = None
+            decay,chain,frac = which_chain(fname,None)
+            if decay in te_int_n_year:
+                n_ev = te_int_n_year[decay]
+            elif chain!=None:
+                n_ev = te_int_n_year[chain] * frac
+            else:
+                #not a chain
+                print "NOT A CHAIN!"
+                raise Exception
+        ev_size,ev_time = get_db_results([rat_version,phase_name,fname])
+        if ev_size:
+            ev_per_run,n_run,size_run,time_run = get_macro_info(ev_size,ev_time,n_ev)
+#            print fname,'\t',chain,n_ev,'\tbytes',ev_size,'\tsec',ev_time,\
+#                "\tNEV",ev_per_run,"\tNRUN",n_run,"\tsize",size_run,"\ttime",time_run
+            if n_run > 100:
+                scale = int(math.log10(n_run))-1
+                new_n_run = int(n_run / 10**scale)
+                new_n_ev = int(n_ev / 10**scale)
+                print "fname",fname,"run:",n_run,new_n_run,"ev:",n_ev,new_n_ev,"check:",n_run/new_n_run,n_ev/new_n_ev
+                n_ev = new_n_ev
+            mod_name = 'TeLoaded'+class_from_mac(fname)
+            fout.write('"%s":{"n_ev":%s, "ev_per_run":%s},\n'%(mod_name,int(n_ev),ev_per_run))
+    fout.write("}\n")
+    fout.write("}\n")
+    fout.close()
+        
+def get_macro_info(ev_size,ev_time,n_ev):
+    """Calculate the number of events per macro blah blah blah
+    """
+    ev_file_size = float(max_size) / ev_size
+    ev_file_time = float(max_time) / ev_time
+    ev_per_run = ev_file_size
+    if ev_file_size>ev_file_time:
+        ev_per_run = ev_file_time
+    #nearest 10k if more than 10k
+    if ev_per_run>1e4:
+        ev_per_run = int(ev_per_run/1e4) * 10000
+    n_runs = n_ev/ev_per_run
+    size_per_run = float(ev_per_run*ev_size) / _MB
+    time_per_run = ev_per_run*ev_time / 3600
+    return ev_per_run,n_runs,size_per_run,time_per_run
+
+def get_db_results(key):
+    sk = copy.copy(key)
+    ek = copy.copy(key)
+    sk.append(None)
+    ek.append("zzzzzzz")
+    rows = db.db.view("_design/benchmark/_view/results",startkey=sk,endkey=ek)
+    if len(rows)!=1:
+        print "ARGH, too many rows!",key
+        print len(rows)
+        return None,None
+    for row in rows:
+        if row.value["state"]=="completed":
+            return row.value["event_size"],row.value["event_time"]["Total"]
+        else:
+            print "Job failed!"
+            return None,None
+
+def is_ext(fname):
+    """Check a background fits the format of an ext background.
+    """
+    for ext in ext_n_year:
+        if ("%s.mac"%ext) in fname:
+            return ext
+    return None
+            
+def which_chain(fname,ext_type):
+    """Check a background belongs to U/Th chain.
+    """
+    macro_decay = fname[:-4]#lose .mac
+    if ext_type:
+        macro_decay = macro_decay[:-(len(ext_type)+1)]#lose e.g. _av.mac
+    for bgd in int_map:
+        if bgd==macro_decay:
+            return bgd,int_map[bgd][0],int_map[bgd][1]
+    return macro_decay,None,None
+
+def class_from_mac(fname):
+    class_name = fname[:-4] # remove .mac suffix
+    return caps(class_name)
+
+def caps(fname):
+    fbits = fname.split('_')
+    class_name = fbits[0].capitalize()
+    for i in fbits[1:]:
+        class_name = '%s_%s'%(class_name,i.capitalize())
+    return class_name
+
+def check_required(options):
+    if not options.sw:
+        return -1
+    return 0
+
+if __name__=="__main__":
+    parser = optparse.OptionParser(usage="Default options given in brackets")
+    parser.add_option("-n",dest="name",default="bench",
+                      help="Database name, (bench)")
+    parser.add_option("-s",dest="server",default="http://couchdb.ph.liv.ac.uk:5984",
+                      help="Database server (http://couchdb.ph.liv.ac.uk:5984")
+    parser.add_option("-v",dest="ratv",default="dev",
+                      help="RAT version (dev)")
+    parser.add_option("-r",dest="sw",
+                      help="Snoing install directory (MUST define)")
+    (options,args) = parser.parse_args()
+    if check_required(options):
+        parser.print_help()
+        sys.exit(1)
+    water_out = "water.js"
+    solar_out = "solar.js"
+    te_out = "teloaded.js"
+    basedir = os.path.join(os.path.expanduser(options.sw),'rat-%s/mac/production'%options.ratv)
+    rat_version = options.ratv
+    db = Database.Database(options.server,options.name,
+                           raw_input("DB Username: "),
+                           getpass.getpass("DB Password: "))
+    get_n_events_water(water_out)
+    get_n_events_solar(solar_out)
+    get_n_events_te(te_out)
