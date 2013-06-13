@@ -284,6 +284,7 @@ def get_macro_info(ev_size,ev_time,n_ev):
     #nearest 10k if more than 10k
     if ev_per_run>1e4:
         ev_per_run = int(ev_per_run/1e4) * 10000
+    ev_per_run = int(ev_per_run)
     n_runs = n_ev/ev_per_run
     size_per_run = float(ev_per_run*ev_size) / _MB
     time_per_run = ev_per_run*ev_time / 3600
