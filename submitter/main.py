@@ -26,7 +26,7 @@ def create_job_card(database,doc,email_user,email_pswd,macro_name):
     card_info['email_pswd']   = email_pswd
     card_info['email_list']   = [doc['email']]
     card_info['doc_id']       = doc.id
-    card_info['n_events']     = 100 #always run this number of events
+    card_info['n_events']     = 1000 #always run this number of events
     card_info['root_name']    = 'bench.root' #always this output file (only ever stored in job directory)
     card_info['macro_name']   = macro_name
     if 'commitHash' in doc:

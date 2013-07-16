@@ -3,7 +3,29 @@ var db_name = split_path[split_path.length-4]
 $db = $.couch.db(db_name);
 $("#header").load("header.html");
 
+function run_search_versions(){
+
+    console.log('here');
+    console.log($main_form);
+    var ratVersion = $main_form.find("select#ratversion").val();
+    var success = $main_form.find("input#success")[0].checked;
+    var failed = $main_form.find("input#failed")[0].checked;        
+
+    $("#results").empty(); //empty previous search records
+    html = "<tr><th>RAT V</th><th>Commit hash</th><th>Descriptor</th><th>Macro</th>"+
+        "<th>Mem (MB)</th><th>Time (s)</th><th>Ev (kB)</th><th>Events/run (20hr)</th>"+
+        "<th>Requested events</th><th>Total runs</th><th>CPU hours</th><th>Expected data (GB)</th>"+
+        "<th>Amend event request</th></tr></thead>";
+	$("#results").append(html);
+    
+    for(var i in ratVersion){
+        run_search(ratVersion[i],success,failed);
+    }
+
+}
+
 function run_search(ratv,show_s,show_f){
+
     var start_key = [ratv,null,null,null];
     var end_key   = [ratv,"zzz","zzz","zzz"];
     view_name = "benchmark/results?startkey=[";
@@ -47,20 +69,46 @@ function run_search(ratv,show_s,show_f){
                 html+= "<td>"+name+"</td>";
                 if (row.value["state"]=="failed"){
                     //failed!
-                    html+= "<td colspan=5 background=#ee3000>macro failed</td>";
+                    html+= "<td colspan=10 background=#ee3000>macro failed</td>";
                 }
                 else{
                     //success!
-                    var ev_per_day = 86400.0 / row.value["event_time"]["Total"];
                     var ev_kb = row.value["event_size"]/1024;
-                    var ev_mb = ev_kb/1024.0;
-                    var ev_gb = ev_mb/1024.0;
                     var mem_mb = row.value["memory_max"]/(1048576);
+                    var event_time = row.value["event_time"]["Total"];
+                    //expect 20hr runs
+                    var ev_per_run = 72000.0 / event_time;
+                    var n_run = "N/A";
+                    var cpu_hours = "N/A";
+                    var data_size_gb = "N/A";                    
+                    var requested = "";
+                    //check if there is a known requested amount                    
+                    if("requested" in row.value){
+                        //yes, fill table with results from requested values
+                        requested = row.value["requested"];
+                        n_run = (ev_per_run / requested).toFixed(1);
+                        cpu_hours = (event_time * requested / 3600).toFixed(1);
+                        data_size_gb = (ev_kb * requested / (1024.0*1024.0)).toFixed(2);
+                    }
                     html+= "<td>"+mem_mb.toFixed(2)+"</td>";
                     html+= "<td>"+row.value["event_time"]["Total"].toFixed(2)+"</td>";
                     html+= "<td>"+ev_kb.toFixed(2)+"</td>";
-                    html+= "<td>"+ev_per_day.toFixed(0)+"</td>";
-                    html+= "<td>"+(ev_gb*10000.0).toFixed(2)+"</td>";
+                    html+= "<td>"+ev_per_run.toFixed(0)+"</td>";
+                    html+= "<td>"+requested+"</td>";
+                    html+= "<td>"+n_run+"</td>";
+                    html+= "<td>"+cpu_hours+"</td>";
+                    html+= "<td>"+data_size_gb+"</td>";
+                    //input textbox with id of docid._.infokey
+                    textbox_id = row.id+"._."+row.key[2]
+                    console.log('add input ... ');
+                    html+= "<td><input type=\"text\" name=\"event_request_box\" id=\""+textbox_id+"\"><td>";
+                    html+= "<td><button type=\"button\" id=run_request onClick=\"submit_event_request()\">Amend</button></td>"
+                    //on enter key doesn't work yet
+                    /*$(textbox_id).keyup(function(event){
+                        if(event.keyCode == 13){
+                            console.log("HELLO from textbox "+textbox_id);
+                        }
+                    });*/
                 }
                 html += "</tr>";                
 		        $("#results").append(html);
@@ -71,28 +119,65 @@ function run_search(ratv,show_s,show_f){
 	    }
     });
 }
-        
 
+function submit_event_request(){    
+    var to_update_list = {};//dict of dicts
+    var $requestform = document.getElementById("requestform");
+    var event_requests = $requestform.getElementsByTagName("input");
+    for(var i=0;i<event_requests.length;i++){
+        if(!event_requests[i].value)
+            continue
+        else{
+            var doc_id = event_requests[i].id.split("._.")[0];
+            var sub_id = event_requests[i].id.split("._.")[1];
+            if(doc_id in to_update_list){
+            }
+            else{
+                to_update_list[doc_id] = {};
+            }
+            if(!isNumber(event_requests[i].value))
+                alert("Value for "+doc_id+" "+sub_id+": "+event_requests[i].value+" is not a number");
+            else
+                to_update_list[doc_id][sub_id] = parseFloat(event_requests[i].value);
+        }
+    }
+    //bulk fetch not possible, run a get and submit on each doc
+    console.log(to_update_list);
+    var n_update = 0;
+    for(var doc_id in to_update_list){
+        if(to_update_list[doc_id]=={})
+            continue;
+        n_update++;
+        $db.openDoc(doc_id , {
+            success: function(data){
+                //ammend the requirements field
+                for(var macro in to_update_list[doc_id]){
+                    data['info'][macro]['requested'] = to_update_list[doc_id][macro];
+                }
+                $db.saveDoc(data , {
+                    success: function(data){
+                        //do nothing, for now
+                    }
+                });
+            }
+        });
+    }
+    //finally, reload the document (using same search parameters)
+    if(n_update!=0)
+        run_search_versions();
+}
+
+function isNumber(n) {
+  return !isNaN(parseFloat(n)) && isFinite(n);
+}
 
 $(document).ready(function() {
 
-	$("button#runsearch").click(function(event) { //search when search button is clicked
-		$tgt = $(event.target);
-		$form = $tgt.parents("form#searchform");
-        var ratVersion = $form.find("select#ratversion").val();
-        var success = $form.find("input#success")[0].checked;
-        var failed = $form.find("input#failed")[0].checked;        
-
-        $("#results").empty(); //empty previous search records
-        html = "<tr><th>RAT V</th><th>Commit hash</th><th>Descriptor</th><th>Macro</th>"+
-            "<th>Mem (MB)</th><th>Time (s)</th><th>Ev (kB)</th><th>Est. ev/24hr</th><th>Est. 10k (GB)</th>"+
-            "</tr></thead>";
-		$("#results").append(html);
-
-        for(var i in ratVersion){
-            run_search(ratVersion[i],success,failed);
-        }
-
+    $("button#runsearch").click(function(event) { //search when search button is clicked
+	    $tgt = $(event.target);
+        $main_form = $tgt.parents("form#searchform");
+        console.log($main_form);
+        run_search_versions();
     });
 
 });
