@@ -86,7 +86,7 @@ function run_search(ratv,show_s,show_f){
                     if("requested" in row.value){
                         //yes, fill table with results from requested values
                         requested = row.value["requested"];
-                        n_run = (ev_per_run / requested).toFixed(1);
+                        n_run = (requested / ev_per_run).toFixed(1);
                         cpu_hours = (event_time * requested / 3600).toFixed(1);
                         data_size_gb = (ev_kb * requested / (1024.0*1024.0)).toFixed(2);
                     }
