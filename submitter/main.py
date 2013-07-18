@@ -135,6 +135,7 @@ def check_old(database,config):
             continue
         if True:
             if j.status=='failed':
+                print "JOB FAILED",j.fqid
                 email = ''
                 email += 'Results for job %s/_utils/database.html?%s/%s: \n'%(database.host,database.name,row.id)
                 email += 'Macro: %s \n'%macro_name

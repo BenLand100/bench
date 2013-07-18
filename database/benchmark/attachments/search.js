@@ -3,10 +3,14 @@ var db_name = split_path[split_path.length-4]
 $db = $.couch.db(db_name);
 $("#header").load("header.html");
 
+// some guideline levels
+var warn_size = 1024; //GB
+var error_size = 5 * 1024; //GB
+var warn_time = 1800; //CPU hours, approx 100 runs
+var error_time = 9000; //CPU hours, approx 500 runs
+
 function run_search_versions(){
 
-    console.log('here');
-    console.log($main_form);
     var ratVersion = $main_form.find("select#ratversion").val();
     var success = $main_form.find("input#success")[0].checked;
     var failed = $main_form.find("input#failed")[0].checked;        
@@ -18,10 +22,8 @@ function run_search_versions(){
         "<th>Amend event request</th></tr></thead>";
 	$("#results").append(html);
     
-    for(var i in ratVersion){
-        run_search(ratVersion[i],success,failed);
-    }
-
+    run_search(ratVersion,success,failed);
+    
 }
 
 function run_search(ratv,show_s,show_f){
@@ -85,24 +87,28 @@ function run_search(ratv,show_s,show_f){
                     //check if there is a known requested amount                    
                     if("requested" in row.value){
                         //yes, fill table with results from requested values
-                        requested = row.value["requested"];
+                        requested = row.value["requested"].toExponential(2);
                         n_run = (requested / ev_per_run).toFixed(1);
                         cpu_hours = (event_time * requested / 3600).toFixed(1);
                         data_size_gb = (ev_kb * requested / (1024.0*1024.0)).toFixed(2);
                     }
-                    html+= "<td>"+mem_mb.toFixed(2)+"</td>";
-                    html+= "<td>"+row.value["event_time"]["Total"].toFixed(2)+"</td>";
-                    html+= "<td>"+ev_kb.toFixed(2)+"</td>";
-                    html+= "<td>"+ev_per_run.toFixed(0)+"</td>";
-                    html+= "<td>"+requested+"</td>";
-                    html+= "<td>"+n_run+"</td>";
-                    html+= "<td>"+cpu_hours+"</td>";
-                    html+= "<td>"+data_size_gb+"</td>";
+                    var state = "success";
+                    if(cpu_hours > error_time || data_size_gb > error_size)
+                        state = "noway";
+                    else if(cpu_hours > warn_time || data_size_gb > warn_size)
+                        state = "doublecheck"
+                    html+= "<td class="+state+">"+mem_mb.toFixed(2)+"</td>";
+                    html+= "<td class="+state+">"+row.value["event_time"]["Total"].toFixed(2)+"</td>";
+                    html+= "<td class="+state+">"+ev_kb.toFixed(2)+"</td>";
+                    html+= "<td class="+state+">"+ev_per_run.toFixed(0)+"</td>";
+                    html+= "<td class="+state+">"+requested+"</td>";
+                    html+= "<td class="+state+">"+n_run+"</td>";
+                    html+= "<td class="+state+">"+cpu_hours+"</td>";
+                    html+= "<td class="+state+">"+data_size_gb+"</td>";
                     //input textbox with id of docid._.infokey
                     textbox_id = row.id+"._."+row.key[2]
-                    console.log('add input ... ');
-                    html+= "<td><input type=\"text\" name=\"event_request_box\" id=\""+textbox_id+"\"><td>";
-                    html+= "<td><button type=\"button\" id=run_request onClick=\"submit_event_request()\">Amend</button></td>"
+                    html+= "<td class="+state+"><input type=\"text\" name=\"event_request_box\" id=\""+textbox_id+"\"><td class="+state+">";
+                    html+= "<td class="+state+"><button type=\"button\" id=run_request onClick=\"submit_event_request()\">Amend</button></td>"
                     //on enter key doesn't work yet
                     /*$(textbox_id).keyup(function(event){
                         if(event.keyCode == 13){

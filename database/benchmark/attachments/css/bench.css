@@ -29,8 +29,14 @@
 	color: #009;
 }
 .small_table .failed {
-    background: #ffeeee;    
+    background: #ffdddd;    
 }
 .small_table .success {
-    background: #eeffef;
+    background: #ddffef;
+}
+.small_table .doublecheck {
+    background: #ffffdd;
+}
+.small_table .noway {
+    background: #ffdddd;
 }
