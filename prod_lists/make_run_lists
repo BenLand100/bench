@@ -245,9 +245,9 @@ def get_n_events_te(fname,rat_version):
         frac = None
         ev_size,ev_time,n_ev = get_db_results([rat_version,phase_name,fname])
         if ev_size:
-            ev_per_run,n_run,size_run,time_run = get_new_macro_info(ev_size,ev_time,n_ev)
-            total_time = ev_time * requested
-            total_size = ev_size * requested
+            ev_per_run,n_run,size_run,time_run = get_macro_info(ev_size,ev_time,n_ev)
+            total_time = ev_time * n_ev
+            total_size = ev_size * n_ev
             if total_size > error_size or total_size > warn_size:
                 print "Size too large, skipping"
                 continue
@@ -256,6 +256,9 @@ def get_n_events_te(fname,rat_version):
                 continue
             else:
                 print "RUN!"
+            if fname=="B8_solar.mac":
+                print "Skip solar"
+                continue
             mod_name = 'TeLoaded'+class_from_mac(fname)
             fout.write('"%s":{"n_ev":%s, "ev_per_run":%s},\n'%(mod_name,int(n_ev),ev_per_run))
     fout.write("}\n")
@@ -286,8 +289,9 @@ def get_db_results(key):
     ek.append("zzzzzzz")
     rows = db.db.view("_design/benchmark/_view/results",startkey=sk,endkey=ek)
     if len(rows)!=1:
-        print "ARGH, too many rows!",key
-        print len(rows)
+        if len(rows)>1:
+            print "ARGH, too many rows!",key
+            print len(rows)
         return None,None,None
     for row in rows:
         if row.value["state"]=="completed":
