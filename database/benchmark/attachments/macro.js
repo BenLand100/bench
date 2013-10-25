@@ -38,17 +38,25 @@ $(document).ready(function() {
             }
             html += "</tr>";
             //now fill the table!
-            for(var i in data.rows){
+            for(var i in data.rows){                
                 var vals = data.rows[i].value;
-                var mem = vals[1]["memory_max"] / _MB;
                 html += "<tr>";
-                html += "<td>" + vals[0] + "<td>";
-                html += "<td>" + mem.toFixed(1) + "</td>";
-                for(var t in time_headers){                   
-                    if(time_headers[t] in vals[1]["event_time"])
-                        html += "<td>" + vals[1]["event_time"][time_headers[t]] + "</td>";
-                    else
-                        html += "<td>" + "N/A" + "</td>";
+                if(vals[1]["state"]=="failed"){
+                    html += "<td>"+vals[0]+"</td>";
+                    html += "<td></td><td></td>";
+                    html += "<td colspan="+time_headers.length+">Macro failed</td>";
+                }
+                else{
+                    var mem = vals[1]["memory_max"] / _MB;
+                    html += "<td>" + vals[0] + "</td>";
+                    html += "<td>" + mem.toFixed(1) + "</td>";
+                    html += "<td>" + vals[1]["event_size"] + "</td>";
+                    for(var t in time_headers){                   
+                        if(time_headers[t] in vals[1]["event_time"])
+                            html += "<td>" + vals[1]["event_time"][time_headers[t]] + "</td>";
+                        else
+                            html += "<td>" + "N/A" + "</td>";
+                    }
                 }
                 html += "</tr>";
             }
