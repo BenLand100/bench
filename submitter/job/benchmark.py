@@ -98,10 +98,13 @@ def benchmark(macro,card):
     size = None
     if os.path.exists(card['root_name']):
         size = os.path.getsize(card['root_name'])
+    elif os.path.exists("%s.root" % card['root_name']): # for rat4.4+
+        size = os.path.getsize("%s.root" % card['root_name'])
     else:
         #Really just want to raise an exception and shove a message here for
         #the main script to find
         print 'BENCH: OUTPUT ROOT FILE DOES NOT EXIST'
+        print os.listdir(os.getcwd())
         raise Exception
         #message += 'Output ROOT file does not exist! \n'
         #message += 'dir contents:\n'
@@ -172,7 +175,11 @@ def finishBench(card,finalInfo):
     email += 'For production purposes:\n'
     email += 'Events in 24hr job: %s \n' % (int(round(3600.*24 / finalInfo['eventTime']['Total'])))
     email += 'Events in 1.6GB file: %s \n' % (int(round(1.6*_scale['GB'] / finalInfo['eventSize'])))
-    sendEmail(card['email_server'],card['email_user'],card['email_pswd'],card['email_list'],email)
+    try:
+        sendEmail(card['email_server'],card['email_user'],card['email_pswd'],card['email_list'],email)
+    except:
+        #dont fail because of the email!
+        pass
 
     db = connectDB(card['db_server'],card['db_name'],card['db_auth'])
     doc = db[card['doc_id']]
@@ -193,7 +200,11 @@ def failBench(card,macro,message=None):
     email += 'Job failed\n'
     if message != None:
         email += message
-    sendEmail(card['email_server'],card['email_user'],card['email_pswd'],card['email_list'],email)
+    try:
+        sendEmail(card['email_server'],card['email_user'],card['email_pswd'],card['email_list'],email)
+    except:
+        #dont fail because of the email!
+        pass
 
     db = connectDB(card['db_server'],card['db_name'],card['db_auth'])
     doc = db[card['doc_id']]
@@ -206,7 +217,7 @@ def connectDB(host,name,auth):
     db = couch[name]
     return db
 
-def sendEmail(mailServer,mailUser,mailPass,mailList,body):
+def sendEmail(mailServer,mailUser,mailPass,mailList,body,retries=3):
     subject = 'Benchmarking results'
     message = ''
     message += 'From: %s\r\n' % mailUser
@@ -216,7 +227,12 @@ def sendEmail(mailServer,mailUser,mailPass,mailList,body):
     message += '%s\n'%body
     if mailServer == 'smtp.gmail.com':
         port = 587
-        smtp = smtplib.SMTP(mailServer,port)
+        try:
+            smtp = smtplib.SMTP(mailServer,port)
+        except smtplib.SMTPConnectError:
+            #server is busy, try again later
+            time.sleep(10)
+            sendEmail(mailServer, mailUser, mailPass, mailList, body, retries-1)
     else:
         smtp = smtplib.SMTP(mailServer)
     if mailUser and mailPass:    
@@ -224,7 +240,12 @@ def sendEmail(mailServer,mailUser,mailPass,mailList,body):
         smtp.starttls()
         smtp.ehlo()
         smtp.login(mailUser,mailPass)
-    smtp.sendmail(mailUser,mailList,message)
+    try:
+        smtp.sendmail(mailUser,mailList,message)
+    except smtplib.SMTPServerDisconnected:
+        #odd disconnect, retry
+        time.sleep(10)
+        sendEmail(mailServer, mailUser, mailPass, mailList, body, retries-1)
 
 def read_card(card_filename):
     cardfile = open(card_filename)

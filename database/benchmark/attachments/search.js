@@ -68,7 +68,7 @@ function run_search(ratv,show_s,show_f){
                 else
                     html+= "<td></td>";
                 html+= "<td>"+desc+"</td>";
-                html+= "<td>"+name+"</td>";
+                html+= "<td><a href=\"macro.html?macro="+name+"&phase="+desc+"\">"+name+"</a></td>";
                 if (row.value["state"]=="failed"){
                     //failed!
                     html+= "<td colspan=10 background=#ee3000>macro failed</td>";
