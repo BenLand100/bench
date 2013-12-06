@@ -13,6 +13,7 @@ import optparse
 from base64 import b64encode
 from src import Database, Macro, BenchConfig
 from GangaSNOplus.Lib import RATUtil
+from Ganga import Core
 
 def create_job_card(database,doc,email_user,email_pswd,macro_name):
     '''create a job card for each job
@@ -25,10 +26,23 @@ def create_job_card(database,doc,email_user,email_pswd,macro_name):
     card_info['email_user']   = email_user
     card_info['email_pswd']   = email_pswd
     card_info['email_list']   = [doc['email']]
+    card_info['rat_version']  = str(doc['ratVersion'])
     card_info['doc_id']       = doc.id
     card_info['n_events']     = 1000 #always run this number of events
     card_info['root_name']    = 'bench' #always this output file (only ever stored in job directory)
     card_info['macro_name']   = macro_name
+    if 'commitHash' in doc:
+        card_info['commit_hash'] = doc['commitHash']
+    return card_info
+
+def create_test_card(doc):
+    '''create a card for testing mode
+    '''
+    card_info = {}
+    card_info['test_mode']    = True
+    card_info['rat_version']  = str(doc['ratVersion'])
+    card_info['n_events']     = 10 #always run this number of events
+    card_info['root_name']    = 'bench' #always this output file (only ever stored in job directory)
     if 'commitHash' in doc:
         card_info['commit_hash'] = doc['commitHash']
     return card_info
@@ -43,6 +57,40 @@ def submit_waiting(database,config):
             print reason
         else:
             submit_job(database,row.id,row.value,macro_str,config)
+
+def submit_test(version):    
+    # Create a moc document, include the testing macro
+    doc = {}
+    doc['ratVersion'] = version
+    macro = open('test/macro.mac', 'r')
+    jobcard = create_test_card(doc)
+    cardfile = file('job/card.json','w')
+    cardfile.write(json.dumps(jobcard))
+    cardfile.close()
+    macrofile = file('job/macro.mac','w')
+    macrofile.write(macro.read())
+    macrofile.close()
+    job = Job()
+    job.backend='Batch'
+    job.application = Executable(exe=(os.path.join(os.getcwd(),'job/job.sh')))
+    commitHash = None
+    if 'commitHash' in doc:
+        commitHash = doc['commitHash']
+    ratVersion = str(doc['ratVersion'])
+    #get the job environment and write a temp file for it
+    temp_env_name = 'temp_job_env.sh'
+    write_job_environment(temp_env_name,config.sw_directory,ratVersion,commitHash,config.env_file)
+    if 'commitHash' in doc:
+        zipFileName = RATUtil.MakeRatSnapshot(commitHash,'rat/',os.path.expanduser('~/gaspCache'))
+        print zipFileName,type(zipFileName)
+        zipFileName = str(zipFileName)
+        print zipFileName,type(zipFileName)
+        job.inputsandbox += [temp_env_name,'job/card.json','job/macro.mac','job/benchmark.py',zipFileName]
+    else:
+        job.inputsandbox += [temp_env_name,'job/card.json','job/macro.mac','job/benchmark.py']
+    job.application.args = [temp_env_name.split('/')[-1],'card.json','macro.mac']
+    job.submit()
+    
 
 def write_job_environment(envName,swDir,ratVersion,commitHash=None,envFile=None):
     #create an environment file to use and ship with the job
@@ -121,6 +169,10 @@ def submit_job(database,jobid,macro_name,macro,config):
     database.save_doc(doc)
 
 def check_old(database,config):
+    # First, run monitoring
+    mon_result = Core.monitoring_component.runMonitoring(timeout=600)
+    if not mon_result:
+        log.error("Ganga monitoring loop failed to complete!")
     rows = database.get_submitted_tasks()
     for row in rows:
         try:
@@ -211,17 +263,23 @@ if __name__=="__main__":
     parser.add_option('-x',dest='email_password',help='Email password',default=None)
     parser.add_option('-w',dest='sw_directory',help='Snoing install directory')
     parser.add_option('-e',dest='env_file',help='Extra environment required for backend',default=None)
+    parser.add_option('--test', dest='test_mode', help='Just run in test mode, supply an arg for the version',
+                      action = 'store_true')
     (options, args) = parser.parse_args()
     config = BenchConfig.BenchConfig()
     if options.config:
         config.read_config(options.config)
     else:
         config.parse_options(options)
-    database = Database.Database(config.db_server,config.db_name,
-                                 config.db_user,config.db_password)
-    try:
-        emailCheck('smtp.gmail.com',config.email_address,config.email_password)
-    except:
-        raise Exception,'Bad email password'
-    check_old(database,config)
-    submit_waiting(database,config)
+
+    if options.test_mode:
+        submit_test(args[0])
+    else:
+        database = Database.Database(config.db_server,config.db_name,
+                                     config.db_user,config.db_password)
+        try:
+            emailCheck('smtp.gmail.com',config.email_address,config.email_password)
+        except:
+            raise Exception,'Bad email password'
+        check_old(database,config)
+        submit_waiting(database,config)

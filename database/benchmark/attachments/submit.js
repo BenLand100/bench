@@ -11,7 +11,7 @@ $(document).ready(function() {
 		$hiddenform = $tgt.parents("form#hiddenform");
 	    var email = $form.find("input#email").val();
 	    var descr = $form.find("input#descr").val();
-        var ratVersion = $form.find("select#ratversion").val();
+        var ratVersion = $form.find("input#ratversion").val();
         var commitHash = $form.find("input#commit_hash").val();
         var attachment_list = '';
         

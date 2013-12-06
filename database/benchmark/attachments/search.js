@@ -26,23 +26,44 @@ function run_search_versions(){
     
 }
 
+function create_version_list(){
+    // Just return an array of the versions available
+    view_name = "benchmark/results";
+    $db.view(view_name, {
+        success: function(data){
+            select = document.getElementById("ratversion");
+            for(var i=0; i<data.rows.length; i++){
+                var opt = document.createElement("option");
+                opt.value = data.rows[i].key;
+                opt.innerHTML = data.rows[i].key;
+                select.appendChild(opt);
+            }
+        },     
+		error: function(e) {
+		    alert('Error loading from database: ' + e + ' DB: '+db_name);
+	    },
+        reduce: true,
+        group_level: 1
+    });
+}
+
 function run_search(ratv,show_s,show_f){
 
     var start_key = [ratv,null,null,null];
     var end_key   = [ratv,"zzz","zzz","zzz"];
-    view_name = "benchmark/results?startkey=[";
-    for(var i_key=0;i_key<start_key.length;i_key++){
-        view_name += "\""+start_key[i_key]+"\"";
-        if ((i_key+1)<start_key.length)
-            view_name += ",";
-    }
-    view_name += "]&endkey=[";
-    for(var i_key=0;i_key<end_key.length;i_key++){
-        view_name += "\""+end_key[i_key]+"\""
-        if ((i_key+1)<end_key.length)
-            view_name += ",";
-    }
-    view_name += "]";
+    view_name = "benchmark/results";
+//    for(var i_key=0;i_key<start_key.length;i_key++){
+//        view_name += "\""+start_key[i_key]+"\"";
+//        if ((i_key+1)<start_key.length)
+//            view_name += ",";
+//    }
+//    view_name += "]&endkey=[";
+//    for(var i_key=0;i_key<end_key.length;i_key++){
+//        view_name += "\""+end_key[i_key]+"\""
+//        if ((i_key+1)<end_key.length)
+//            view_name += ",";
+//    }
+//    view_name += "]";
     $db.view(view_name, {
 	    success: function(data){
 		    for (i in data.rows) {
@@ -122,7 +143,10 @@ function run_search(ratv,show_s,show_f){
         },        
 		error: function(e) {
 		    alert('Error loading from database: ' + e + ' DB: '+db_name);
-	    }
+	    },
+        reduce: false,
+        startkey: start_key,
+        endkey: end_key
     });
 }
 
@@ -178,7 +202,7 @@ function isNumber(n) {
 }
 
 $(document).ready(function() {
-
+    create_version_list();
     $("button#runsearch").click(function(event) { //search when search button is clicked
 	    $tgt = $(event.target);
         $main_form = $tgt.parents("form#searchform");

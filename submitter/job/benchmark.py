@@ -11,6 +11,8 @@
 #   Works as a submitted script, will feedback
 #   benchmark information and insert directly
 #   into a database.
+# 2013/12/05 - m.mottram@sussex.ac.uk
+#   Added information for different RAT versions
 ################################################
 
 import sys
@@ -21,8 +23,98 @@ import time
 import couchdb
 import json
 
+
 _scale = {'kB': 1024.0, 'mB': 1024.0*1024.0, 'gB': 1024.0*1024.0*1024.0,
           'KB': 1024.0, 'MB': 1024.0*1024.0, 'GB': 1024.0*1024.0*1024.0}
+
+
+class LogReader(object):
+    """Class to parse information from rat log files.
+    """
+    def __init__(self, log):
+        self._log = log
+
+
+class LogReaderPre450(LogReader):
+    """Class to parse information from rat log files.
+    """
+    def __init__(self, log):
+        super(LogReaderPre450, self).__init__(log)
+        
+    def get_times(self):
+        logfile = open(self._log, 'r')
+        write_flag = False
+        time_info = {}
+        log_lines = []
+        for line in logfile:
+            if 'Processor usage statistics' in line:
+                write_flag = True
+            elif 'Total:' in line:
+                log_lines += [line]
+                time_info['Total'] = float(line.split(':')[1].strip().split()[0])
+                write_flag = False
+            elif write_flag is True:
+                if 'sec/event' in line:
+                    time_type = line.split(':')[0].strip()
+                    time_info[time_type] = float(line.split(':')[1].strip().split()[0])
+                log_lines += [line]
+            else:
+                continue
+        logfile.close()
+        return time_info, log_lines
+
+
+class LogReaderPost450(LogReader):
+    """Class to parse information from rat log files.
+    """
+    def __init__(self, log):
+        super(LogReaderPost450, self).__init__(log)
+        
+    def get_times(self):
+        logfile = open(self._log, 'r')
+        write_flag = False
+        end_flag = False
+        time_info = {}
+        log_lines = []
+        for line in logfile:            
+            if 'Processor usage statistics' in line:
+                write_flag = 1
+            elif "Gsim::~Gsim" in line:
+                # ends in two calls
+                end_flag = 1
+            elif end_flag != 0:
+                if end_flag == 2:
+                    log_lines += [line]
+                    time_info["Total"] = float(line.split()[2].strip())
+                    write_flag = 0
+                end_flag += 1
+            elif write_flag == 1:
+                if 'sec/call' in line and "DSEvent" in line:
+                    time_type = line.split(':')[0].strip()
+                    time_result = line.split(":")[2].split()[2].strip()
+                    if time_result.startswith("<"):
+                        # Less than
+                        time_result = time_result[1:]
+                    time_info[time_type] = float(time_result)
+                    log_lines += [line]
+            else:
+                continue
+        logfile.close()
+        return time_info, log_lines
+        
+
+def get_log_reader(version, log):
+    """Function to get the correct log reader version.
+    """
+    pre_450 = ["4.0", "4.1", "4.2", "4.2.1", "4.3.0", "4.4.0"]
+    post_450 = ["4.5.0"]
+    if version in pre_450:
+        return LogReaderPre450(log)
+    elif version in post_450:
+        return LogReaderPost450(log)
+    else:
+        raise Exception("Unknown rat version %s" % version)
+
 
 ##################################################################
 
@@ -112,26 +204,13 @@ def benchmark(macro,card):
         #    message += '%s \n' % f
         #failBench(card,macro,message)
     fileOut.write('For macro %s and a test of %i events.\n' % (macro, card['n_events']))
-    ratLog = open(logName,'r')
-    writeFlag = 0
-    timeInfo = {}
-    print 'here!?'
-    for line in ratLog:
-        if 'Processor usage statistics' in line:
-            writeFlag = 1
-        elif 'Total:' in line:
-            fileOut.write(line)
-            timeInfo['Total'] = float(line.split(':')[1].strip().split()[0])
-            writeFlag = 0
-        elif writeFlag == 1:
-            if 'sec/event' in line:
-                timeType = line.split(':')[0].strip()
-                timeInfo[timeType] = float(line.split(':')[1].strip().split()[0])
-            fileOut.write(line)
-        else:
-            continue
-    print 'got here?'
-    ratLog.close()
+
+    # Get the correct log reader
+    log_reader = get_log_reader(str(card["rat_version"]), logName)
+    timeInfo, log_lines = log_reader.get_times()
+    for line in log_lines:
+        fileOut.write("%s\n" % line)
+
     evSize = size / card['n_events']
     # Write macro stats to log file:
     fileOut.write('Size per event: %.3f bytes\n' % evSize)
@@ -163,6 +242,12 @@ def benchmark(macro,card):
 def finishBench(card,finalInfo):
     '''Finish the benchmarking with an update of the DB and an email!
     '''
+
+    if 'test_mode' in card:
+        # Don't do anything
+        print "Job complete, returning"
+        return
+
     email = ''
     email += 'Results for job %s/_utils/database.html?%s/%s: \n'%(card['db_server'],card['db_name'],card['doc_id'])
     email += 'Macro: %s \n'%card['macro_name']
@@ -174,13 +259,14 @@ def finishBench(card,finalInfo):
     email += '\n'
     email += 'For production purposes:\n'
     email += 'Events in 24hr job: %s \n' % (int(round(3600.*24 / finalInfo['eventTime']['Total'])))
-    email += 'Events in 1.6GB file: %s \n' % (int(round(1.6*_scale['GB'] / finalInfo['eventSize'])))
+    email += 'Events in 1.6GB file: %s \n' % (int(round(1.6*_scale['GB'] / finalInfo['eventSize'])))    
     try:
         sendEmail(card['email_server'],card['email_user'],card['email_pswd'],card['email_list'],email)
     except:
         #dont fail because of the email!
         pass
 
+    # If the test mode was specified, dont post to the DB
     db = connectDB(card['db_server'],card['db_name'],card['db_auth'])
     doc = db[card['doc_id']]
     doc['info'][card['macro_name']]['state']='completed'
@@ -192,6 +278,11 @@ def finishBench(card,finalInfo):
 def failBench(card,macro,message=None):
     '''Benchmarking failed, notify user!
     '''
+    if 'test_mode' in card:
+        # Don't do anything
+        print "Job failed, returning"
+        return
+
     email = ''
     email += 'Results for job %s/_utils/database.html?%s/%s: \n'%(card['db_server'],card['db_name'],card['doc_id'])
     email += 'Macro: %s \n'%macro
@@ -205,7 +296,7 @@ def failBench(card,macro,message=None):
     except:
         #dont fail because of the email!
         pass
-
+    
     db = connectDB(card['db_server'],card['db_name'],card['db_auth'])
     doc = db[card['doc_id']]
     doc[card['macro_name']]['state']='failed'
@@ -260,11 +351,12 @@ if __name__ == '__main__':
     macro = sys.argv[2]
     card = read_card(card_file)
     if os.path.isfile(macro) == True: #Check macro exists
-        #try:
-        benchmark(macro,card)
-        #except:
-        #    failBench(card,macro)
-        #    sys.exit(1)
+        try:
+            benchmark(macro,card)
+        except Exception, e:
+            sys.stderr.write('Job failed: %s \n' % e)
+            failBench(card,macro)
+            raise
     else:
         print 'User must give macro directory to benchmark.py in command line' #No macro or invalid path!
         sys.exit()
