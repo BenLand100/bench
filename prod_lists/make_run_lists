@@ -68,7 +68,8 @@ ext_n_year = {"av":{"U238":1.29e7,
 
 water_int_n_year = {"U238":9.96e6,
                     "Th232":2.94e5,
-                    "Signal":1e4}
+                    "Signal":1e4,
+                    "pmt_betagammas":2e6}
 
 solar_int_n_year = {"U238":4898,
                     "Th232":682,
@@ -160,6 +161,9 @@ def get_n_events_water(fname,rat_version):
             #signal run - just do 100k events
             n_ev = water_int_n_year["Signal"]
             decay = "SIGNAL"
+        elif 'pmt_betagammas' in fname:
+            n_ev = water_int_n_year['pmt_betagammas']
+            decay = "PMT"
         elif is_ext(fname):
             #external background
             ext_type = is_ext(fname)
@@ -235,24 +239,43 @@ def get_n_events_solar(fname,rat_version):
 def get_n_events_te(fname,rat_version):    
     print "\n\n=======TE130=========\n\n"
     fout = file(fname,"w")
+    fout_fix = file('fix_'+fname,'w')
+    fout_missed = file('missed_'+fname,'w')
     fout.write('{\n')
     fout.write('"rat_v": "%s",\n'%rat_version)
     fout.write('"modules" : {\n')
+    fout_fix.write('{\n')
+    fout_fix.write('"rat_v": "%s",\n'%rat_version)
+    fout_fix.write('"modules" : {\n')    
     phase_name='teloaded'
     for fname in os.listdir(os.path.join(basedir,'teloaded')):
         decay = None
         chain = None
         frac = None
         ev_size,ev_time,n_ev = get_db_results([rat_version,phase_name,fname])
+        print ev_size, ev_time, n_ev, fname
         if ev_size:
             ev_per_run,n_run,size_run,time_run = get_macro_info(ev_size,ev_time,n_ev)
             total_time = ev_time * n_ev
             total_size = ev_size * n_ev
-            if total_size > error_size or total_size > warn_size:
-                print "Size too large, skipping"
-                continue
-            elif total_time > error_time or total_time > warn_time:
-                print "Time too long, skipping"
+            if (total_size > error_size or total_size > warn_size) or \
+                    (total_time > error_time or total_time > warn_time):
+                print "Time too long or size too large, skipping"
+                print "time:",total_time/3600
+                print "size:",total_size/_GB                
+                mod_name = 'TeLoaded'+class_from_mac(fname)
+                n_ev = raw_input("modified %s (%s): "%(mod_name,n_ev))
+                try:
+                    n_ev = int(n_ev)
+                except:
+                    fout_missed.write('%s\t%s GB\t%s CPU hrs\n'%(mod_name,total_size/_GB,total_time/3600.))
+                    continue
+                ev_per_run,n_run,size_run,time_run = get_macro_info(ev_size,ev_time,n_ev)
+                total_time = ev_time * n_ev
+                total_size = ev_size * n_ev
+                print "TIME (hr): ",total_time / 3600
+                print "SIZE (GB): ",total_size / _GB
+                fout_fix.write('"%s":{"n_ev":%s, "ev_per_run":%s},\n'%(mod_name,int(n_ev),ev_per_run))
                 continue
             else:
                 print "RUN!"
@@ -263,6 +286,10 @@ def get_n_events_te(fname,rat_version):
             fout.write('"%s":{"n_ev":%s, "ev_per_run":%s},\n'%(mod_name,int(n_ev),ev_per_run))
     fout.write("}\n")
     fout.write("}\n")
+    fout_fix.write("}\n")
+    fout_fix.write("}\n")
+    fout_missed.close()
+    fout_fix.close()
     fout.close()
         
 def get_macro_info(ev_size,ev_time,n_ev):
