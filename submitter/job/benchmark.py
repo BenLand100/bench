@@ -85,7 +85,7 @@ class LogReaderPost450(LogReader):
             elif end_flag != 0:
                 if end_flag == 2:
                     log_lines += [line]
-                    time_info["Total"] = float(line.split()[2].strip())
+                    time_info["Simulation"] = float(line.split()[2].strip())
                     write_flag = 0
                 end_flag += 1
             elif write_flag == 1:
@@ -99,6 +99,11 @@ class LogReaderPost450(LogReader):
                     log_lines += [line]
             else:
                 continue
+        # Total is Gsim + all processors
+        total_time = 0
+        for t in time_info.keys():
+            total_time += time_info[t]
+        total_time["Total"] = total_time
         logfile.close()
         return time_info, log_lines
         

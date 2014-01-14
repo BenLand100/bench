@@ -21,7 +21,7 @@ $(document).ready(function() {
     var view_name = "benchmark/results_by_macro";    
     $db.view(view_name, {
         success: function(data){     
-            $("#jobhead").append("<h2>"+macro+"</h2>")
+            $("#macrohead").append("<h2>"+macro+"</h2>")
             $("#results").empty(); //empty previous search records
             // create the headers on the fly
             var time_headers = ["Total"]; // always have the total first            
