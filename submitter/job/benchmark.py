@@ -100,10 +100,10 @@ class LogReaderPost450(LogReader):
             else:
                 continue
         # Total is Gsim + all processors
-        total_time = 0
+        total_time = 0.0
         for t in time_info.keys():
             total_time += time_info[t]
-        total_time["Total"] = total_time
+        time_info["Total"] = total_time
         logfile.close()
         return time_info, log_lines
         
@@ -254,7 +254,7 @@ def finishBench(card,finalInfo):
         return
 
     email = ''
-    email += 'Results for job %s/_utils/database.html?%s/%s: \n'%(card['db_server'],card['db_name'],card['doc_id'])
+    email += 'Results for job %s/_utils/document.html?%s/%s: \n'%(card['db_server'],card['db_name'],card['doc_id'])
     email += 'Macro: %s \n'%card['macro_name']
     if 'commit_hash' in card:
         email += 'Git hash: %s \n'%card['commit_hash']
