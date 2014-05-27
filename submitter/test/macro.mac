@@ -1,0 +1,32 @@
+#  File:       pmt_betagammas.mac
+#
+#  	       9/23/2013 Sean Grullon <grullons@hep.upenn.edu> 
+#
+#      Weighted PMT Beta/Gamma  background from the PMTs
+#      This takes advantage of the GunPMTGamma generator, 
+#      which used Bill Heintzelman's PMT beta gamma model 
+#      (docDB 1712) to generate PMT gammas at a radius of 610cm.
+#
+
+/PhysicsList/OmitMuonicProcesses true
+/PhysicsList/OmitHadronicProcesses true
+
+/run/initialize
+##########EVENT LOOP############
+/rat/proc frontend
+/rat/proc trigger
+/rat/proc eventbuilder
+/rat/proc calibratePMT
+
+/rat/proc scintFitter
+
+/rat/proc outntuple
+/rat/proclast outroot
+##########EVENT LOOP############
+/generator/add combo gunpmtgamma:fillshell:uniform
+/generator/vtx/set 2.6
+/generator/pos/set 0.0 0.0 0.0 6099.9 6100.1 h2o_sub
+/generator/rate/set 1
+
+/rat/run/start
+exit
