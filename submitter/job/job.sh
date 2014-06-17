@@ -14,6 +14,9 @@
 # arg2: card file
 # arg3: macro to benchmark
 
+echo "START BENCH"
+ls
+echo "ARGS: $1, $2, $3"
 source $1
 python benchmark.py $2 $3
 

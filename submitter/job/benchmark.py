@@ -64,11 +64,11 @@ class LogReaderPre450(LogReader):
         return time_info, log_lines
 
 
-class LogReaderPost450(LogReader):
+class LogReader450(LogReader):
     """Class to parse information from rat log files.
     """
     def __init__(self, log):
-        super(LogReaderPost450, self).__init__(log)
+        super(LogReader450, self).__init__(log)
         
     def get_times(self):
         logfile = open(self._log, 'r')
@@ -106,9 +106,55 @@ class LogReaderPost450(LogReader):
         time_info["Total"] = total_time
         logfile.close()
         return time_info, log_lines
-        
 
-def get_log_reader(version, log):
+
+class LogReaderPost450(LogReader):
+    """Class to parse information from rat log files.
+    """
+    def __init__(self, log):
+        super(LogReaderPost450, self).__init__(log)
+
+    def get_times(self):
+        logfile = open(self._log, 'r')
+        write_flag = False
+        time_info = {}
+        log_lines = []
+        end_of_run = False
+        for line in logfile:
+            if line.startswith("Run time:"):
+                run_time = float(line.split()[-2])
+                write_flag = True
+            elif write_flag is True:
+                if "DSEvent:" in line and end_of_run is False:
+                    time_type = line.partition(":")[0].strip()
+                    time_result = line.partition("s/call")[0].split()[-1].strip()
+                    original_type = time_type
+                    counter = 0
+                    while time_type in time_info:
+                        # e.g. if there are multiple conditional blocks
+                        counter += 1
+                        time_type = "%s_%02d" % (original_type, counter)
+                    time_info[time_type] = float(time_result)
+                    log_lines += [line]
+                elif "Gsim:" in line:
+                    # Don't include the Run section
+                    if "Simulation:" in line or "Build" in line:
+                        time_type = "GSim_" + line.split(":")[1].strip()
+                        time_result = line.partition("s/call")[0].split()[-1].strip()
+                        time_info[time_type] = float(time_result)
+                        log_lines += [line]
+                elif "EndOfRun" in line:
+                    end_of_run = True
+        # Ignore setup time.
+        total_time = 0.0
+        for t in time_info.keys():
+            total_time += time_info[t]
+        time_info["Total"] = total_time
+        logfile.close()
+        return time_info, log_lines
+
+
+def get_log_reader(version, log, commit_hash=None):
     """Function to get the correct log reader version.
     """
     pre_450 = ["4.0", "4.1", "4.2", "4.2.1", "4.3.0", "4.4.0"]
@@ -116,7 +162,10 @@ def get_log_reader(version, log):
     if version in pre_450:
         return LogReaderPre450(log)
     elif version in post_450:
-        return LogReaderPost450(log)
+        if commit_hash is not None:
+            return LogReaderPost450(log)
+        else:
+            return LogReader450(log)
     else:
         raise Exception("Unknown rat version %s" % version)
 
@@ -211,7 +260,11 @@ def benchmark(macro,card):
     fileOut.write('For macro %s and a test of %i events.\n' % (macro, card['n_events']))
 
     # Get the correct log reader
-    log_reader = get_log_reader(str(card["rat_version"]), logName)
+    log_reader = None
+    try:
+        log_reader = get_log_reader(str(card["rat_version"]), logName, str(card["commit_hash"]))
+    except KeyError:
+        log_reader = get_log_reader(str(card["rat_version"]), logName)
     timeInfo, log_lines = log_reader.get_times()
     for line in log_lines:
         fileOut.write("%s\n" % line)

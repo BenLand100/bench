@@ -7,6 +7,7 @@
 import os
 import sys
 import json
+import time
 import getpass
 import smtplib
 import optparse
@@ -14,6 +15,7 @@ from base64 import b64encode
 from src import Database, Macro, BenchConfig
 from GangaSNOplus.Lib import RATUtil
 from Ganga import Core
+
 
 def create_job_card(database,doc,email_user,email_pswd,macro_name):
     '''create a job card for each job
@@ -58,7 +60,7 @@ def submit_waiting(database,config):
         else:
             submit_job(database,row.id,row.value,macro_str,config)
 
-def submit_test(version):    
+def submit_test(version, commitHash=None):
     # Create a moc document, include the testing macro
     doc = {}
     doc['ratVersion'] = version
@@ -73,15 +75,15 @@ def submit_test(version):
     job = Job()
     job.backend='Batch'
     job.application = Executable(exe=(os.path.join(os.getcwd(),'job/job.sh')))
-    commitHash = None
-    if 'commitHash' in doc:
-        commitHash = doc['commitHash']
+    if commitHash is not None:
+        doc['commitHash'] = commitHash
     ratVersion = str(doc['ratVersion'])
     #get the job environment and write a temp file for it
     temp_env_name = 'temp_job_env.sh'
     write_job_environment(temp_env_name,config.sw_directory,ratVersion,commitHash,config.env_file)
     if 'commitHash' in doc:
-        zipFileName = RATUtil.MakeRatSnapshot(commitHash,'rat/',os.path.expanduser('~/gaspCache'))
+        zipFileName = RATUtil.MakeRatSnapshot('snoplus', commitHash, versionUpdate=False,
+                                              zipPrefix='rat/', cachePath=os.path.expanduser('~/gaspCache'))
         print zipFileName,type(zipFileName)
         zipFileName = str(zipFileName)
         print zipFileName,type(zipFileName)
@@ -107,7 +109,7 @@ def write_job_environment(envName,swDir,ratVersion,commitHash=None,envFile=None)
             error = 'Local environment file not found: %s'%(envFile)
             raise Exception,error
         temp = file(envFile,'r').readlines()        
-        for temp_line in temp:
+        for i, temp_line in enumerate(temp):
             line = temp_line.strip()
             if line!='' and line==None:
                 local_env += temp_line
@@ -121,11 +123,16 @@ def write_job_environment(envName,swDir,ratVersion,commitHash=None,envFile=None)
         #need to configure the shipped snapshot
         job_env += '#!/bin/bash -l\n'
         job_env += local_env
-        for line in rat_env_lines[:-1]:
+        for i, line in enumerate(rat_env_lines):
             #skip the last line - sourcing the rat/env.sh
+            if i==len(rat_env_lines)-1 or i==len(rat_env_lines)-2:
+                if 'source' in line:
+                    continue
             job_env += line
         job_env += 'jobdir=$(pwd)\n'
-        job_env += 'tar -zxvf rat.*\n'
+        # Untar to a known dir name!
+        job_env += 'mkdir rat \n'
+        job_env += 'tar -zxf rat.* -C rat --strip-components 1 \n'
         job_env += 'cd rat\n'
         job_env += './configure\n'
         job_env += 'source env.sh\n'
@@ -154,7 +161,8 @@ def submit_job(database,jobid,macro_name,macro,config):
     temp_env_name = 'temp_job_env.sh'
     write_job_environment(temp_env_name,config.sw_directory,ratVersion,commitHash,config.env_file)
     if 'commitHash' in doc:
-        zipFileName = RATUtil.MakeRatSnapshot(commitHash,'rat/',os.path.expanduser('~/gaspCache'))
+        zipFileName = RATUtil.MakeRatSnapshot('snoplus', commitHash, versionUpdate=False,
+                                              zipPrefix='rat/', cachePath=os.path.expanduser('~/gaspCache'))
         print zipFileName,type(zipFileName)
         zipFileName = str(zipFileName)
         print zipFileName,type(zipFileName)
@@ -164,9 +172,20 @@ def submit_job(database,jobid,macro_name,macro,config):
     job.application.args = [temp_env_name.split('/')[-1],'card.json','macro.mac']
     job.submit()
     #json.dumps(jobcard)
+    # Ensure that the doc is saved
+    doc = database.get_doc(jobid)
     doc['info'][macro_name]['state']='submitted'
     doc['info'][macro_name]['fqid']=job.fqid
-    database.save_doc(doc)
+    try:
+        database.save_doc(doc)
+    except:
+        print "Warning: 2nd try at saving"
+        time.sleep(1)
+        doc = database.get_doc(jobid)
+        doc['info'][macro_name]['state']='submitted'
+        doc['info'][macro_name]['fqid']=job.fqid
+        database.save_doc(doc)
+
 
 def check_old(database,config):
     # First, run monitoring
@@ -263,7 +282,7 @@ if __name__=="__main__":
     parser.add_option('-x',dest='email_password',help='Email password',default=None)
     parser.add_option('-w',dest='sw_directory',help='Snoing install directory')
     parser.add_option('-e',dest='env_file',help='Extra environment required for backend',default=None)
-    parser.add_option('--test', dest='test_mode', help='Just run in test mode, supply an arg for the version',
+    parser.add_option('--test', dest='test_mode', help='Just run in test mode, supply an arg for the version and (optional) commit',
                       action = 'store_true')
     (options, args) = parser.parse_args()
     config = BenchConfig.BenchConfig()
@@ -273,7 +292,10 @@ if __name__=="__main__":
         config.parse_options(options)
 
     if options.test_mode:
-        submit_test(args[0])
+        if len(args)>1:
+            submit_test(args[0], args[1])
+        else:
+            submit_test(args[0])
     else:
         database = Database.Database(config.db_server,config.db_name,
                                      config.db_user,config.db_password)

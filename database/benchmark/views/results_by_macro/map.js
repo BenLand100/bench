@@ -8,7 +8,7 @@ function(doc){
             for(var name in doc.info){
                 if(doc.info[name].state=="completed" || doc.info[name].state=="failed"){
 
-                    emit([name,doc.descr],[doc.ratVersion,doc.info[name]]);
+                    emit([name,doc.descr,doc.ratVersion,commitHash],doc.info[name]);
                 }
             }
         }
