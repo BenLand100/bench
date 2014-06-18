@@ -11,6 +11,7 @@ import time
 import getpass
 import smtplib
 import optparse
+import cmdexec
 from base64 import b64encode
 from src import Database, Macro, BenchConfig
 from GangaSNOplus.Lib import RATUtil
@@ -79,18 +80,11 @@ def submit_test(version, commitHash=None):
         doc['commitHash'] = commitHash
     ratVersion = str(doc['ratVersion'])
     #get the job environment and write a temp file for it
-    temp_env_name = 'temp_job_env.sh'
-    write_job_environment(temp_env_name,config.sw_directory,ratVersion,commitHash,config.env_file)
+    job_env = get_env_path(config.sw_directory, ratVersion)
     if 'commitHash' in doc:
-        zipFileName = RATUtil.MakeRatSnapshot('snoplus', commitHash, versionUpdate=False,
-                                              zipPrefix='rat/', cachePath=os.path.expanduser('~/gaspCache'))
-        print zipFileName,type(zipFileName)
-        zipFileName = str(zipFileName)
-        print zipFileName,type(zipFileName)
-        job.inputsandbox += [temp_env_name,'job/card.json','job/macro.mac','job/benchmark.py',zipFileName]
-    else:
-        job.inputsandbox += [temp_env_name,'job/card.json','job/macro.mac','job/benchmark.py']
-    job.application.args = [temp_env_name.split('/')[-1],'card.json','macro.mac']
+        job_env = install_snapshot(config, ratVersion, commitHash)
+    job.inputsandbox += ['job/card.json', 'job/macro.mac', 'job/benchmark.py']
+    job.application.args = [job_env, 'card.json', 'macro.mac']
     job.submit()
     
 
@@ -141,6 +135,81 @@ def write_job_environment(envName,swDir,ratVersion,commitHash=None,envFile=None)
     fout.write(job_env)
     fout.close()
 
+def install_snapshot(config, rat_version, commit_hash):
+    '''Download a RAT snapshot, install to a common area for all jobs to use.
+    '''
+    zip_name = RATUtil.MakeRatSnapshot('snoplus', commit_hash, versionUpdate=False,
+                                       zipPrefix='rat/', cachePath=os.path.expanduser('~/gaspCache'))
+    sw_path = os.path.join(config.sw_directory, 'snapshots')
+    sw_name = 'rat-%s' % commit_hash
+    env_name = os.path.join(sw_path, 'env_rat-%s.sh' % commit_hash)
+    if os.path.exists(os.path.join(sw_path, sw_name, 'bin/rat')) and \
+       os.path.exists(env_name):
+        return str(env_name) # installed already
+    print "INSTALLING rat-%s; this may take a while" % commit_hash
+    print "untarring..."
+    untar_file(zip_name, sw_path, sw_name)
+    os.system("chmod u+x %s" % os.path.join(sw_path, sw_name, 'configure'))
+    # Untarred; now configure and install
+    base_env = os.path.join(config.sw_directory, 'env_rat-%s.sh' % rat_version)
+    create_env(os.path.join(sw_path, 'installerTemp.sh'), base_env)
+    # compile
+    print "compiling..."
+    command_text = "\
+#!/bin/bash\n \
+source %s\n \
+cd %s\n \
+./configure \n \
+source env.sh\n \
+scons" % (os.path.join(sw_path, 'installerTemp.sh'), os.path.join(sw_path, sw_name))
+    filename = os.path.join(os.getcwd(), "temp.sh")
+    temp_file = file(filename, 'w')
+    temp_file.write(command_text)
+    temp_file.close()
+    os.system('/bin/bash %s' % filename)
+    os.system('chmod u+x %s' % os.path.join(sw_path, sw_name, 'bin/rat'))
+    print "...installed"
+    ###
+    create_env(env_name, base_env, os.path.join(sw_path, sw_name))
+    return str(env_name)
+
+def untar_file(tarname, target_path, target_dir):
+    import tarfile
+    import shutil
+    tarred_file = tarfile.open(tarname)
+    tarred_file.extractall(target_path)
+    tarred_file.close()
+
+def create_env(filename, env_file, rat_dir=None):
+    '''Create environment file to source for RAT jobs.
+    
+    If rat_dir is not set, then assumes only base directories are needed.
+    '''
+    if not os.path.exists(env_file):
+        raise Exception("create_env::cannot find environment %s" % env_file)
+    fin = file(env_file, 'r')
+    env_text = ''
+    lines = fin.readlines()
+    for i,line in enumerate(lines):
+        if 'source ' in line:
+            if i==len(lines)-1 or i==len(lines)-2:
+                # This is the fixed RAT release line; remove it!
+                pass
+            else:
+                env_text += '%s \n' % line
+        else:
+            env_text += '%s \n' % line
+    if rat_dir is not None:
+        env_text += "source %s" % os.path.join(rat_dir, "env.sh")
+    env_file = file(filename, 'w')
+    env_file.write(env_text)
+
+def get_env_path(sw_directory, rat_version):
+    rat_env_file = str(os.path.join(sw_directory, 'env_rat-%s.sh' % rat_version))
+    if not os.path.exists(rat_env_file):
+        raise Exception("Missing job environment for: " % rat_env_file)
+    return rat_env_file
+
 def submit_job(database,jobid,macro_name,macro,config):
     doc = database.get_doc(jobid)
     jobcard = create_job_card(database,doc,config.email_address,config.email_password,macro_name)
@@ -158,18 +227,11 @@ def submit_job(database,jobid,macro_name,macro,config):
         commitHash = doc['commitHash']
     ratVersion = str(doc['ratVersion'])
     #get the job environment and write a temp file for it
-    temp_env_name = 'temp_job_env.sh'
-    write_job_environment(temp_env_name,config.sw_directory,ratVersion,commitHash,config.env_file)
+    job_env = get_env_path(config.sw_directory, ratVersion)
     if 'commitHash' in doc:
-        zipFileName = RATUtil.MakeRatSnapshot('snoplus', commitHash, versionUpdate=False,
-                                              zipPrefix='rat/', cachePath=os.path.expanduser('~/gaspCache'))
-        print zipFileName,type(zipFileName)
-        zipFileName = str(zipFileName)
-        print zipFileName,type(zipFileName)
-        job.inputsandbox += [temp_env_name,'job/card.json','job/macro.mac','job/benchmark.py',zipFileName]
-    else:
-        job.inputsandbox += [temp_env_name,'job/card.json','job/macro.mac','job/benchmark.py']
-    job.application.args = [temp_env_name.split('/')[-1],'card.json','macro.mac']
+        job_env = install_snapshot(config, ratVersion, commitHash)
+    job.application.args = [job_env, 'card.json', 'macro.mac']
+    job.inputsandbox += ['job/card.json', 'job/macro.mac', 'job/benchmark.py']
     job.submit()
     #json.dumps(jobcard)
     # Ensure that the doc is saved
