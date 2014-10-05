@@ -28,7 +28,7 @@ function run_search_versions(){
 
 function create_version_list(){
     // Just return an array of the versions available
-    view_name = "benchmark/results";
+    view_name = "benchmark/rat_versions";
     $db.view(view_name, {
         success: function(data){
             select = document.getElementById("ratversion");
@@ -42,8 +42,6 @@ function create_version_list(){
 		error: function(e) {
 		    alert('Error loading from database: ' + e + ' DB: '+db_name);
 	    },
-        reduce: true,
-        group_level: 1
     });
 }
 

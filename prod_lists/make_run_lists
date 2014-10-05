@@ -24,7 +24,6 @@ import math
 import optparse
 import getpass
 import sys
-import common
 import Database
 
 ############################
