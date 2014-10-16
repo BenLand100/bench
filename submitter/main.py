@@ -14,20 +14,20 @@ import optparse
 import cmdexec
 from base64 import b64encode
 from src import Database, Macro, BenchConfig
-from GangaSNOplus.Lib import RATUtil
+from GangaSNOplus.Lib.Utilities import RATUtil
 from Ganga import Core
+from job import benchmark
 
-
-def create_job_card(database,doc,email_user,email_pswd,macro_name):
+def create_job_card(doc, config, macro_name):
     '''create a job card for each job
     '''
     card_info = {}
-    card_info['db_server']    = database.host
-    card_info['db_name']      = database.name
-    card_info['db_auth']      = b64encode('%s:%s' % (database.get_credentials()))
+    card_info['db_server']    = config.db_server
+    card_info['db_name']      = config.db_name
+    card_info['db_auth']      = b64encode('%s:%s' % (config.db_user, config.db_password))
     card_info['email_server'] = 'smtp.gmail.com'
-    card_info['email_user']   = email_user
-    card_info['email_pswd']   = email_pswd
+    card_info['email_user']   = config.email_address
+    card_info['email_pswd']   = config.email_password
     card_info['email_list']   = [doc['email']]
     card_info['rat_version']  = str(doc['ratVersion'])
     card_info['doc_id']       = doc.id
@@ -51,11 +51,13 @@ def create_test_card(doc):
     return card_info
     
 def submit_waiting(database,config):
-    rows = database.get_waiting_tasks()
+    rows = database.view("_design/benchmark/_view/macro_by_status", key="waiting")
+    print rows
     for row in rows:
+        print row
         macro_name = row.value
-        macro = database.get_attachment(row.id,row.value)
-        can_run,macro_str,reason = Macro.verifyMacro(macro)
+        macro = database.get_attachment(row.id, row.value)
+        can_run, macro_str, reason = Macro.verify_macro(macro)
         if not can_run:
             print reason
         else:
@@ -211,8 +213,16 @@ def get_env_path(sw_directory, rat_version):
     return rat_env_file
 
 def submit_job(database,jobid,macro_name,macro,config):
-    doc = database.get_doc(jobid)
-    jobcard = create_job_card(database,doc,config.email_address,config.email_password,macro_name)
+    doc = database[jobid]
+    # Check the macro version first!
+    ratVersion = str(doc['ratVersion'])
+    try:
+        benchmark.get_log_reader(ratVersion, None)
+    except:
+        print "Cannot submit job: no log reader for RAT %s" % ratVersion
+        raise
+        return
+    jobcard = create_job_card(doc, config, macro_name)
     cardfile = file('job/card.json','w')
     cardfile.write(json.dumps(jobcard))
     cardfile.close()
@@ -225,7 +235,6 @@ def submit_job(database,jobid,macro_name,macro,config):
     commitHash = None
     if 'commitHash' in doc:
         commitHash = doc['commitHash']
-    ratVersion = str(doc['ratVersion'])
     #get the job environment and write a temp file for it
     job_env = get_env_path(config.sw_directory, ratVersion)
     if 'commitHash' in doc:
@@ -235,18 +244,18 @@ def submit_job(database,jobid,macro_name,macro,config):
     job.submit()
     #json.dumps(jobcard)
     # Ensure that the doc is saved
-    doc = database.get_doc(jobid)
+    doc = database[jobid]
     doc['info'][macro_name]['state']='submitted'
     doc['info'][macro_name]['fqid']=job.fqid
     try:
-        database.save_doc(doc)
+        database.save(doc)
     except:
         print "Warning: 2nd try at saving"
         time.sleep(1)
-        doc = database.get_doc(jobid)
+        doc = database[jobid]
         doc['info'][macro_name]['state']='submitted'
         doc['info'][macro_name]['fqid']=job.fqid
-        database.save_doc(doc)
+        database.save(doc)
 
 
 def check_old(database,config):
@@ -254,23 +263,23 @@ def check_old(database,config):
     mon_result = Core.monitoring_component.runMonitoring(timeout=600)
     if not mon_result:
         log.error("Ganga monitoring loop failed to complete!")
-    rows = database.get_submitted_tasks()
+    rows = database.view("_design/benchmark/_view/macro_by_status", key="submitted")
     for row in rows:
         try:
-            doc = database.get_doc(row.id)
+            doc = database[row.id]
             macro_name = row.value
             fqid = int(doc['info'][macro_name]['fqid'])
             j = jobs(fqid)
         except:
             print 'no job with that fqid',fqid,type(fqid),'setting status to failed'
             doc['info'][macro_name]['state']='waiting'
-            database.save_doc(doc)
+            database.save(doc)
             continue
         if True:
             if j.status=='failed':
                 print "JOB FAILED",j.fqid
                 email = ''
-                email += 'Results for job %s/_utils/database.html?%s/%s: \n'%(database.host,database.name,row.id)
+                email += 'Results for job %s/_utils/document.html?%s/%s :\n'%(config.db_server,config.db_name, row.id)
                 email += 'Macro: %s \n'%macro_name
                 email += 'Job failed\n'
                 errPath = os.path.join(j.outputdir,'stderr')
@@ -292,12 +301,12 @@ def check_old(database,config):
                             email += line
                 if not os.path.exists(errPath) and not os.path.exists(outPath):
                     email += '\nNo output records!'
-                sendEmail('smtp.gmail.com',config.email_address,config.email_password,[doc['email']],email)
+                send_email('smtp.gmail.com',config.email_address,config.email_password,[doc['email']],email)
                 doc['info'][row.value]['state']='failed'
-                database.save_doc(doc)
+                database.save(doc)
                 jobs(fqid).remove()
 
-def emailCheck(mailServer,mailUser,mailPass=None):
+def email_check(mailServer,mailUser,mailPass=None):
     '''Just check we can login'''
     if mailPass==None:
         getpass.getpass('Email password: ')
@@ -312,7 +321,7 @@ def emailCheck(mailServer,mailUser,mailPass=None):
         smtp.ehlo()
         smtp.login(mailUser,mailPass)
         
-def sendEmail(mailServer,mailUser,mailPass,mailList,body):
+def send_email(mailServer,mailUser,mailPass,mailList,body):
     subject = 'Benchmarking results'
     message = ''
     message += 'From: %s\r\n' % mailUser
@@ -359,10 +368,12 @@ if __name__=="__main__":
         else:
             submit_test(args[0])
     else:
-        database = Database.Database(config.db_server,config.db_name,
-                                     config.db_user,config.db_password)
+        database = Database.Database.get_instance(host = config.db_server,
+                                                  name = config.db_name,
+                                                  user = config.db_user,
+                                                  pswd = config.db_password)
         try:
-            emailCheck('smtp.gmail.com',config.email_address,config.email_password)
+            email_check('smtp.gmail.com',config.email_address,config.email_password)
         except:
             raise Exception,'Bad email password'
         check_old(database,config)

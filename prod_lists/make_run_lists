@@ -34,34 +34,26 @@ _GB = _MB*1024
 max_size = 1.6*_GB
 max_time = 20*3600
 
-warn_size = 1024 * _GB
-error_size = 5 * 1024 * _GB
-warn_time = 1800 * 3600.
-error_time = 9000 * 3600. 
+# Don't actually fail the datasets
+# Rather, setup a warning to show that they're large
+warn_size = 5 * 1024 * _GB # 5 TB limit
+warn_time = 100 * 24 * 3600. # 100 days of single CPU
 
 
 basedir = None
 rat_version = None
-db = None
 
 def get_request(mac_dir, rat_version, phase, module_prefix):
     lines = [] # lines describing the job, to output to a file
     for fname in os.listdir(os.path.join(mac_dir, phase)):
         ev_size, ev_time, n_ev = get_db_results([rat_version, phase, fname])
-        if ev_size:
+        if ev_size is not None and n_ev > 0:
             ev_per_run, n_run, size_run, time_run = get_macro_info(ev_size, ev_time, n_ev)
             total_time = ev_time * n_ev
             total_size = ev_size * n_ev
-            if (total_size > error_size or total_size > warn_size) or \
-                    (total_time > error_time or total_time > warn_time):
-                print "Time too long or size too large, skipping:", phase, fname, n_ev
-                print "time:", total_time/3600
-                print "size:", total_size/_GB      
-                include = raw_input("Run anyway? [y/N]: ")
-                if include!="y" and include!="Y":
-                    continue
-                else:
-                    print "including!"          
+            if (total_size > warn_size) or \
+                    (total_time > warn_time):
+                print "WARNING: %s %s\t%.2f days, %.0f GB\t%d jobs" % (phase, fname, total_time/(3600*24), total_size/_GB, n_run)
             mod_name = module_prefix + class_from_mac(fname)
             lines.append('"%s":{"n_ev":%s, "ev_per_run":%s},\n'%(mod_name, int(n_ev), ev_per_run))
     return lines
@@ -137,7 +129,8 @@ def get_db_results(key):
     ek = copy.copy(key)
     sk.append(None)
     ek.append("zzzzzzz")
-    rows = db.db.view("_design/benchmark/_view/results", startkey=sk, endkey=ek, reduce=False)
+    database = Database.Database.get_instance()
+    rows = database.view("_design/benchmark/_view/results", startkey=sk, endkey=ek, reduce=False)
     if len(rows)!=1:
         if len(rows)>1:
             print "ARGH, too many rows!", key
@@ -150,7 +143,7 @@ def get_db_results(key):
             else:
                 return None, None, None
         else:
-            print "Job failed!", key
+            # print "Job failed!", key
             return None, None, None
 
 def class_from_mac(fname):
@@ -188,9 +181,10 @@ if __name__=="__main__":
     te_out = "teloaded.js"
     basedir = os.path.join(os.path.expanduser(options.sw), 'rat-%s/mac/production'%options.ratv)
     rat_version = options.ratv
-    db = Database.Database(options.server, options.name,
-                           raw_input("DB Username: "),
-                           getpass.getpass("DB Password: "))
+    database = Database.Database.get_instance(host = options.server, 
+                                              name = options.name,
+                                              user = raw_input("DB Username: "),
+                                              pswd = getpass.getpass("DB Password: "))
     get_n_events_water(water_out, rat_version)
     get_n_events_solar(solar_out, rat_version)
     get_n_events_te(te_out, rat_version)

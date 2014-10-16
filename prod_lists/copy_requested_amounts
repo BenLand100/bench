@@ -12,14 +12,15 @@ import Database
 import optparse
 import getpass
 
-def copy_requests(db, phase, v_x, v_y):
+def copy_requests(phase, v_x, v_y):
     """Copy the requests for rat v_x to rat v_y for given phase
     """
+    database = Database.Database.get_instance()
     start_key = [v_x, phase]
     end_key = [v_x, phase+"_"]
-    rows_x = db.db.view("_design/benchmark/_view/results",
-                        startkey=start_key, endkey=end_key,
-                        reduce=False)
+    rows_x = database.view("_design/benchmark/_view/results",
+                           startkey=start_key, endkey=end_key,
+                           reduce=False)
     doc = None
     current_id = None
     for row_x in rows_x:
@@ -27,8 +28,8 @@ def copy_requests(db, phase, v_x, v_y):
             continue
         #row_x.key[3] is the commit hash, assume null for now!
         key_y = [v_y, phase, row_x.key[2], row_x.key[3]]
-        rows_y = db.db.view("_design/benchmark/_view/results",
-                            key=key_y, reduce=False)
+        rows_y = database.view("_design/benchmark/_view/results",
+                               key=key_y, reduce=False)
         if len(rows_y)!=1:
             #either too many or too few
             continue
@@ -37,9 +38,9 @@ def copy_requests(db, phase, v_x, v_y):
             if row_y.id!=current_id:
                 #first save the old doc
                 if doc is not None:
-                    db.db.save(doc)
+                    database.save(doc)
                 #now open the new doc
-                doc = db.db[row_y.id]
+                doc = database[row_y.id]
             amend = True
             if "requested" in doc["info"][row_x.key[2]]:
                 #are we sure we want to amend?
@@ -55,7 +56,7 @@ def copy_requests(db, phase, v_x, v_y):
                 doc["info"][row_x.key[2]]["requested"] = row_x.value["requested"]
     #finally, save the doc
     if doc is not None:
-        db.db.save(doc)
+        database.save(doc)
     
 if __name__=="__main__":
     parser = optparse.OptionParser()
@@ -68,11 +69,12 @@ if __name__=="__main__":
     if not options.version1 or not options.version2:
         parser.print_help()
         raise Exception("Must define v1 and v2 of RAT")
-    db = Database.Database(options.server,options.name,
-                           raw_input("DB Username: "),
-                           getpass.getpass("DB Password: "))
+    database = Database.Database.get_instance(host = options.server,
+                                              name = options.name,
+                                              user = raw_input("DB Username: "),
+                                              pswd = getpass.getpass("DB Password: "))
     # assume solar, teloaded and water phase only 
-    #copy_requests(db, "water", options.version1, options.version2)
-    #copy_requests(db, "solar", options.version1, options.version2)
-    copy_requests(db, "teloaded", options.version1, options.version2)
+    copy_requests("water", options.version1, options.version2)
+    copy_requests("solar", options.version1, options.version2)
+    copy_requests("teloaded", options.version1, options.version2)
     

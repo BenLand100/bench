@@ -52,7 +52,10 @@ class BenchConfig(object):
         self.db_server = options.db_server
         self.db_name = options.db_name
         self.db_user = options.db_user
-        self.db_password = options.db_password
+        if options.db_password:
+            self.db_password = options.db_password
+        else:
+            self.db_password = getpass.getpass("DB password: ")
         self.email_address = options.email_address
         self.email_password = options.email_password
         self.sw_directory = options.sw_directory

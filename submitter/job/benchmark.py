@@ -28,6 +28,12 @@ _scale = {'kB': 1024.0, 'mB': 1024.0*1024.0, 'gB': 1024.0*1024.0*1024.0,
           'KB': 1024.0, 'MB': 1024.0*1024.0, 'GB': 1024.0*1024.0*1024.0}
 
 
+# ALL RAT versions that are known need to be listed here
+pre_450 = ["4.0", "4.1", "4.2", "4.2.1", "4.3.0", "4.4.0"]
+version_450 = ["4.5.0"]
+post_450 = ["4.6.0", "5.0.0", "5.0.1"]
+
+
 class LogReader(object):
     """Class to parse information from rat log files.
     """
@@ -115,37 +121,60 @@ class LogReaderPost450(LogReader):
         super(LogReaderPost450, self).__init__(log)
 
     def get_times(self):
+        # Processors are listed multiple times:
+        # - Conditional blocks (stats for either true / false cases)
+        # - Overall ConditionalProcBlock numbers
+        # Read file, ignore ConditionalProcBlock:~ stats
         logfile = open(self._log, 'r')
-        write_flag = False
-        time_info = {}
         log_lines = []
-        end_of_run = False
-        for line in logfile:
-            if line.startswith("Run time:"):
-                run_time = float(line.split()[-2])
+        time_info = {}
+        # These bools tell us what information we should write out
+        proc_blocks = False
+        gsim_blocks = False
+        write_flag = False
+
+        for line in logfile.readlines():
+            if "ProcBlock::~ProcBlock" in line:
                 write_flag = True
-            elif write_flag is True:
-                if "DSEvent:" in line and end_of_run is False:
-                    time_type = line.partition(":")[0].strip()
-                    time_result = line.partition("s/call")[0].split()[-1].strip()
-                    original_type = time_type
-                    counter = 0
-                    while time_type in time_info:
-                        # e.g. if there are multiple conditional blocks
-                        counter += 1
-                        time_type = "%s_%02d" % (original_type, counter)
-                    time_info[time_type] = float(time_result)
-                    log_lines += [line]
-                elif "Gsim:" in line:
-                    # Don't include the Run section
-                    if "Simulation:" in line or "Build" in line:
-                        time_type = "GSim_" + line.split(":")[1].strip()
-                        time_result = line.partition("s/call")[0].split()[-1].strip()
-                        time_info[time_type] = float(time_result)
-                        log_lines += [line]
-                elif "EndOfRun" in line:
-                    end_of_run = True
-        # Ignore setup time.
+                proc_blocks = True
+                gsim_blocks = False
+            elif "ConditionalProcBlock::~ConditionalProcBlock" in line:
+                proc_blocks = False
+                gsim_blocks = False
+            elif "Gsim::~Gsim" in line:
+                proc_blocks = False
+                gsim_blocks = True
+
+            # Now read the stats from the appropriate block
+            time_per_event = None
+            name = None
+            if proc_blocks is True and "DSEvent:" in line:
+                # Have an event level processor
+                name = line.partition(":")[0].strip()
+            elif gsim_blocks is True and "s/call" in line:
+                if "Run:" not in line:
+                    name = line.partition(":")[2].partition(":")[0].strip()
+                    name = "Gsim_%s" % name
+            
+            # If name is set, then it's something to write out
+            if name is not None:
+                # Fill the final dictionary
+                time_per_event = line.partition("s/call")[0].split()[-1].strip()                
+                if name in time_info:
+                    # e.g. if there are multiple conditional blocks
+                    ctr = 1
+                    temp_name = "%s_%02d" % (name, ctr)
+                    while temp_name in time_info:
+                        ctr += 1
+                        temp_name = "%s_%02d" % (name, ctr)
+                    name = temp_name
+                time_info[name] = float(time_per_event)
+
+            # Finally, just write out the log
+            if write_flag is True:
+                log_lines += [line]
+
+        # Now find the total time per event (sum of all components)
         total_time = 0.0
         for t in time_info.keys():
             total_time += time_info[t]
@@ -157,15 +186,13 @@ class LogReaderPost450(LogReader):
 def get_log_reader(version, log, commit_hash=None):
     """Function to get the correct log reader version.
     """
-    pre_450 = ["4.0", "4.1", "4.2", "4.2.1", "4.3.0", "4.4.0"]
-    post_450 = ["4.5.0"]
     if version in pre_450:
         return LogReaderPre450(log)
-    elif version in post_450:
-        if commit_hash is not None:
-            return LogReaderPost450(log)
-        else:
-            return LogReader450(log)
+    elif version in version_450 and commit_hash is None:
+        return LogReader450(log)
+    elif (version in version_450 and commit_hash is not None) \
+         or version in post_450:
+        return LogReaderPost450(log)
     else:
         raise Exception("Unknown rat version %s" % version)
 
@@ -342,7 +369,7 @@ def failBench(card,macro,message=None):
         return
 
     email = ''
-    email += 'Results for job %s/_utils/database.html?%s/%s: \n'%(card['db_server'],card['db_name'],card['doc_id'])
+    email += 'Results for job %s/_utils/document.html?%s/%s : \n'%(card['db_server'],card['db_name'],card['doc_id'])
     email += 'Macro: %s \n'%macro
     if 'commit_hash' in card:
         email += 'Git hash: %s \n'%card['commit_hash']
@@ -357,7 +384,7 @@ def failBench(card,macro,message=None):
     
     db = connectDB(card['db_server'],card['db_name'],card['db_auth'])
     doc = db[card['doc_id']]
-    doc[card['macro_name']]['state']='failed'
+    doc['info'][card['macro_name']]['state']='failed'
     db.save(doc)
 
 def connectDB(host,name,auth):

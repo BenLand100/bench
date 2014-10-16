@@ -20,7 +20,7 @@ required_commands = [#Commands that MUST be used
     ['/rat/run/start'],
     ]
 
-def verifyMacro(macro):
+def verify_macro(macro):
     '''Check the lines in the macro (a streamer object)
     '''
     #maximum parts that can be checked is three
@@ -35,17 +35,17 @@ def verifyMacro(macro):
     for i,line in enumerate(macro.readlines()):
         macro_lines += line
         for cmd in bad_commands:
-            if checkCommand(cmd,line):
+            if check_command(cmd,line):
                 badCmd=True
                 canRun=False
                 reason+='Unacceptable command (line %s): %s \n'%(i,''.join(['%s ' % bit for bit in cmd]) )
         for cmd in bad_options:
-            if checkOption(cmd,line):
+            if check_option(cmd,line):
                 badOpt=True
                 canRun=False
                 reason+='No options allowed for command (line %s): %s \n'%(i,bad_options)
         for i,cmd in enumerate(required_commands):
-            if checkCommand(cmd,line):
+            if check_command(cmd,line):
                 reqCmd[i]=True
     for i,cmd in enumerate(required_commands):
         if reqCmd[i]==False:
@@ -53,7 +53,7 @@ def verifyMacro(macro):
             reason+='Missing command: %s \n'%(''.join(['%s ' % bit for bit in cmd]))
     return canRun,macro_lines,reason
 
-def checkCommand(command,line):
+def check_command(command,line):
     '''Match the line and groups, return true if a match
     '''
     pattern = re.compile(r'''\s*(?P<command>\S*)\s*(?P<option>\S*)''')
@@ -73,7 +73,7 @@ def checkCommand(command,line):
             fullMatch=False
     return fullMatch
 
-def checkOption(command,line):
+def check_option(command,line):
     '''Fine to have a command, as long as no option is present
     '''
     pattern = re.compile(r'''\s*(?P<command>\S*)\s*(?P<option>\S*)''')
