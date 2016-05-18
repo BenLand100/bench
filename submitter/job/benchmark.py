@@ -22,6 +22,7 @@ from subprocess import Popen
 import time
 import couchdb
 import json
+import glob
 
 
 _scale = {'kB': 1024.0, 'mB': 1024.0*1024.0, 'gB': 1024.0*1024.0*1024.0,
@@ -31,7 +32,9 @@ _scale = {'kB': 1024.0, 'mB': 1024.0*1024.0, 'gB': 1024.0*1024.0*1024.0,
 # ALL RAT versions that are known need to be listed here
 pre_450 = ["4.0", "4.1", "4.2", "4.2.1", "4.3.0", "4.4.0"]
 version_450 = ["4.5.0"]
-post_450 = ["4.6.0", "5.0.0", "5.0.1"]
+post_450 = ["4.6.0", "5.0.0", "5.0.1", "5.0.2", "5.0.3",
+            "5.1.0", "5.2.0", "5.2.1", "5.2.2", "5.3.0",
+            "5.3.1", "5.3.2-water_prod"]
 
 
 class LogReader(object):
@@ -268,12 +271,15 @@ def benchmark(macro,card):
     size = None
     outputDir = os.path.join(os.getcwd(),os.path.basename(macro)+'.log')#Output log file to cwd
     fileOut = open(outputDir,'w')
-    size = None
-    if os.path.exists(card['root_name']):
-        size = os.path.getsize(card['root_name'])
-    elif os.path.exists("%s.root" % card['root_name']): # for rat4.4+
-        size = os.path.getsize("%s.root" % card['root_name'])
-    else:
+    size = -999
+    # Stat the size of ALL root files
+    # Pick the largest
+    root_files = glob.glob("*.root")
+    for f in root_files:
+        tmp = os.path.getsize(f)
+        if tmp > size:
+            size = tmp
+    if size < 0:
         #Really just want to raise an exception and shove a message here for
         #the main script to find
         print 'BENCH: OUTPUT ROOT FILE DOES NOT EXIST'

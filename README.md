@@ -1,4 +1,4 @@
 bench
 =====
 
-Benchmarking for SNO+
+Benchmarking for SNO+.

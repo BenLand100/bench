@@ -5,6 +5,7 @@
 import os
 import re
 import sys
+import string
 
 bad_commands = [#Commands that are scrictly forbidden
     ['/run/beamOn'],#'Not a valid command',
@@ -16,7 +17,6 @@ bad_options = [#Commands that are allowed, as long as options for them are disab
     ]
 
 required_commands = [#Commands that MUST be used
-    ['/rat/proclast','outroot'],#'ROOT output must be set as final processor'
     ['/rat/run/start'],
     ]
 
@@ -89,3 +89,13 @@ def check_option(command,line):
                 #option is present
                 hasOption=True
     return hasOption
+
+def check_replacements(macro, **kwargs):
+    args_in_macro = {}
+    for k, v in kwargs.iteritems():
+        if "${%s}" % k in macro:
+            args_in_macro[k] = v
+    print "Replacing:", args_in_macro
+    macro_template = string.Template(macro)
+    return macro_template.substitute(**args_in_macro)
+    

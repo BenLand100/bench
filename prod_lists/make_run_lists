@@ -25,6 +25,8 @@ import optparse
 import getpass
 import sys
 import Database
+import collections
+import list_util
 
 ############################
 #THE MAX SIZES AND TIMES:
@@ -54,9 +56,9 @@ def get_request(mac_dir, rat_version, phase, module_prefix):
             if (total_size > warn_size) or \
                     (total_time > warn_time):
                 print "WARNING: %s %s\t%.2f days, %.0f GB\t%d jobs" % (phase, fname, total_time/(3600*24), total_size/_GB, n_run)
-            mod_name = module_prefix + class_from_mac(fname)
-            lines.append('"%s":{"n_ev":%s, "ev_per_run":%s},\n'%(mod_name, int(n_ev), ev_per_run))
-    return lines
+            mod_name = module_prefix + list_util.class_from_mac(fname)
+            lines.append('{"module": "%s", "n_ev":%s, "ev_per_run":%s},\n'%(mod_name, int(n_ev), ev_per_run))
+    return sorted(lines)
             
 
 def get_n_events_water(fname, rat_version):    
@@ -64,14 +66,14 @@ def get_n_events_water(fname, rat_version):
     fout = file(fname, "w")
     fout.write('{\n')
     fout.write('"rat_v": "%s",\n'%rat_version)
-    fout.write('"modules" : {\n')
+    fout.write('"modules" : [\n')
     lines = get_request(basedir, rat_version, 'water', 'Water')
     for i, line in enumerate(lines):
         if i == len(lines)-1:
             line = line[:-2] # remove final comma
             line = line + '\n' 
         fout.write(line)
-    fout.write("}\n")
+    fout.write("]\n")
     fout.write("}\n")
     fout.close()
 
@@ -80,14 +82,14 @@ def get_n_events_solar(fname, rat_version):
     fout = file(fname, "w")
     fout.write('{\n')
     fout.write('"rat_v": "%s",\n'%rat_version)
-    fout.write('"modules" : {\n')
+    fout.write('"modules" : [\n')
     lines = get_request(basedir, rat_version, 'solar', 'Solar')
     for i, line in enumerate(lines):
         if i == len(lines)-1:
             line = line[:-2] # remove final comma
             line = line + '\n' 
         fout.write(line)
-    fout.write("}\n")
+    fout.write("]\n")
     fout.write("}\n")
     fout.close()
 
@@ -96,14 +98,14 @@ def get_n_events_te(fname, rat_version):
     fout = file(fname, "w")
     fout.write('{\n')
     fout.write('"rat_v": "%s",\n'%rat_version)
-    fout.write('"modules" : {\n')
+    fout.write('"modules" : [\n')
     lines = get_request(basedir, rat_version, 'teloaded', 'TeLoaded')
     for i, line in enumerate(lines):
         if i == len(lines)-1:
             line = line[:-2] # remove final comma
             line = line + '\n' 
         fout.write(line)
-    fout.write("}\n")
+    fout.write("]\n")
     fout.write("}\n")
     fout.close()
         
@@ -145,17 +147,6 @@ def get_db_results(key):
         else:
             # print "Job failed!", key
             return None, None, None
-
-def class_from_mac(fname):
-    class_name = fname[:-4] # remove .mac suffix
-    return caps(class_name)
-
-def caps(fname):
-    fbits = fname.split('_')
-    class_name = fbits[0].capitalize()
-    for i in fbits[1:]:
-        class_name = '%s_%s'%(class_name, i.capitalize())
-    return class_name
 
 def check_required(options):
     if not options.sw:

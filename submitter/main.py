@@ -58,6 +58,16 @@ def submit_waiting(database,config):
         macro_name = row.value
         macro = database.get_attachment(row.id, row.value)
         can_run, macro_str, reason = Macro.verify_macro(macro)
+        # Also check to see if there are any string replacement fields
+        # For partial fill:
+        # z=0 is halffull, day=1642 is July 2014 (!)
+        # Just set all rates to 1
+        # For pmt_betagammas:
+        # radius of 7 metres
+        macro_str = Macro.check_replacements(macro_str, z = 0,
+                                             day = 1642,
+                                             rate = 1,
+                                             radius = 7000)
         if not can_run:
             print reason
         else:
@@ -85,7 +95,9 @@ def submit_test(version, commitHash=None):
     job_env = get_env_path(config.sw_directory, ratVersion)
     if 'commitHash' in doc:
         job_env = install_snapshot(config, ratVersion, commitHash)
-    job.inputsandbox += ['job/card.json', 'job/macro.mac', 'job/benchmark.py']
+    job.inputfiles += [LocalFile(namePattern = 'job/card.json'),
+                       LocalFile(namePattern = 'job/macro.mac'),
+                       LocalFile(namePattern = 'job/benchmark.py')]
     job.application.args = [job_env, 'card.json', 'macro.mac']
     job.submit()
     
@@ -140,8 +152,8 @@ def write_job_environment(envName,swDir,ratVersion,commitHash=None,envFile=None)
 def install_snapshot(config, rat_version, commit_hash):
     '''Download a RAT snapshot, install to a common area for all jobs to use.
     '''
-    zip_name = RATUtil.MakeRatSnapshot('snoplus', commit_hash, versionUpdate=False,
-                                       zipPrefix='rat/', cachePath=os.path.expanduser('~/gaspCache'))
+    zip_name = RATUtil.make_rat_snapshot('snoplus', commit_hash, update=False,
+                                         zip_prefix='archived/', cache_path=os.path.expanduser('~/gaspCache'))
     sw_path = os.path.join(config.sw_directory, 'snapshots')
     sw_name = 'rat-%s' % commit_hash
     env_name = os.path.join(sw_path, 'env_rat-%s.sh' % commit_hash)
@@ -240,7 +252,9 @@ def submit_job(database,jobid,macro_name,macro,config):
     if 'commitHash' in doc:
         job_env = install_snapshot(config, ratVersion, commitHash)
     job.application.args = [job_env, 'card.json', 'macro.mac']
-    job.inputsandbox += ['job/card.json', 'job/macro.mac', 'job/benchmark.py']
+    job.inputfiles += [LocalFile(namePattern = 'job/card.json'),
+                       LocalFile(namePattern = 'job/macro.mac'),
+                       LocalFile(namePattern = 'job/benchmark.py')]
     job.submit()
     #json.dumps(jobcard)
     # Ensure that the doc is saved
