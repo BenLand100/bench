@@ -1,0 +1,139 @@
+#!/usr/bin/env python
+##################################
+# make_partial
+#
+# Built from mac/production/partialscint/MakeMacros.py
+#
+##################################
+import argparse
+import os
+import glob
+import csv
+import list_util
+
+uchain = ['U238','Th234','Pa234','U234','Th230','Ra226','Rn222','Po218','Pb214','Bi214','Bi214Po214']
+thchain = ['Th232','Ra228','Ac228','Th228','Ra224','Rn220','Po216','Pb212','Bi212','Bi212Po212']
+solar = ['pep','be7','b8','hep','cno','pp']
+
+
+def make_line(macro, day, z, n, rate = None):
+    module_prefix = "PartialScint"
+    module = module_prefix + list_util.class_from_mac(os.path.basename(macro))
+    # Dict to describe the template stuff to set
+    # To keep order, keep the day first after module
+
+    if rate is not None:
+        template_str = '{"day": %s, "z": %s, "rate": %.4E}' % (day, z, rate)
+    else:
+        template_str = '{"day": %s, "z": %s}' % (day, z)
+    return '{"module": "%s", "template": %s, "n_runs": %s, "t_format": "day", "t_run": 1}' % (module, template_str, n)
+
+if __name__=="__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-d", "--default_n", type=int, default=1,
+                        help="Default number of runs per day [1]")
+    parser.add_argument("filelist", help="List of number of runs per day")
+    parser.add_argument("rat_dir", help="Software directory")
+    parser.add_argument("rat_v", help="RAT version")
+    parser.add_argument("output", help="output file")
+    args = parser.parse_args()
+
+    # For each day in the rates file, we need a matching number of ROOT files for each decay
+    # Some lines are space delimited, some are tabs, use a splitter rather than csv reader
+    rates_path = os.path.join(args.rat_dir, 'mac/production/partialscint/rates.txt')
+    macros = sorted(glob.glob(os.path.join(args.rat_dir, 'mac/production/partialscint/*.mac')))
+
+    V_full = 903.63
+
+    rates = {}
+    isotopes = []
+    with open(rates_path, 'r') as f:
+        # First line is headings
+        headings = f.readline().split()
+        isotopes = headings[3:]
+        # For each day, add an entry for rates for each isotope
+        for line in f.readlines():
+            day = int(line.split()[0])
+            z = int(line.split()[1])
+            volume = float(line.split()[2])
+            rates[day] = {'z': z, 'v': volume}
+            for i, rate in enumerate(line.split()[3:]):
+                rates[day][headings[i+3]] = float(rate)
+
+    n_runs = {}
+    # This one IS a csv
+    with open(args.filelist, 'r') as f:
+        # First line is headings
+        reader = csv.DictReader(f)
+        for row in reader:
+            day = int(row.pop('day'))
+            n_runs[day] = dict((k, int(v)) for (k, v) in row.iteritems())
+
+
+    with open(args.output, 'w') as f:
+
+        # Could use json pretty printing here
+        f.write('{\n')
+        f.write('"rat_v": "%s",\n' % args.rat_v)
+        f.write('"modules": [\n')
+        
+    
+        lines = []
+        # Now loop through all macros and add entries for each day
+        for m in macros:
+            # _scint.mac : use the rates from the file
+            # _water.mac : use rates from the volume scaling
+            # Solar : fluxscaling applied for rates already
+            # Externals : fixed rate
+    
+            # Isotope name
+            isotope = os.path.basename(m).partition("_")[0]
+            if isotope not in isotopes:
+                if isotope in thchain:
+                    isotope = "Thchain"
+                elif isotope in uchain:
+                    isotope = "Uchain"
+                else:
+                    isotope = None
+    
+            if m.endswith("_scint.mac"):
+                for day in rates.keys():
+                    if isotope:
+                        lines.append(make_line(macro = m,
+                                               day = day,
+                                               z = rates[day]['z'],
+                                               rate = rates[day][isotope],
+                                               n = n_runs[day][isotope]))
+                    else:
+                        # Assume solar or other signal
+                        lines.append(make_line(macro = m,
+                                               day = day,
+                                               z = rates[day]['z'],
+                                               n = args.default_n))
+            elif m.endswith("_water.mac"):
+                for day in rates.keys():
+                    rate = (V_full - rates[day]['v']) / V_full
+                    if rate<1e-10:
+                        continue # No point
+                    lines.append(make_line(macro = m,
+                                           day = day,
+                                           z = rates[day]['z'],
+                                           rate = rate,
+                                           n = args.default_n))
+            elif m.endswith("_pmt.mac"):
+                pass # Skip these
+            else:
+                for day in rates.keys():
+                    lines.append(make_line(macro = m,
+                                           day = day,
+                                           z = rates[day]['z'],
+                                           n = args.default_n))
+
+        f.write(",\n".join(l for l in sorted(lines)))
+#        for i, l in enumerate(sorted(lines)):
+#            if i == last_line:
+#                l = "" l.strip()
+#            f.write(l)
+
+        f.write(']\n')
+        f.write('}\n')
