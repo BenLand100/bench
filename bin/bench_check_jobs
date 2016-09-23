@@ -1,0 +1,85 @@
+#!/usr/bin/env python
+'''Check and prompt the user to reset jobs to failed or waiting
+if it looks like they've died
+
+Useful when debugging
+'''
+import os
+import argparse
+import json
+import time
+import shutil
+
+from bench import config, database
+
+
+def remove_directory(job_directory):
+    '''Try to remove, ignore if failed
+    '''
+    try:
+        shutil.rmtree(job_directory)
+    except OSError:
+        pass
+
+
+def query_reset(document, message, job_directory):
+    '''Prompt the user to make a decision over whether to fail or set to waiting
+    '''
+    print message
+    reset = raw_input('RESET: 1 [failed], 2 [waiting], 3 [ignore]: ')
+    try:
+        reset = int(reset)
+        if reset == 1:
+            document['state'] = 'faiiled'
+            remove_directory(job_directory)
+            database.put(config.db_server, config.db_name, config.db_auth, document['_id'], json.dumps(document))
+        elif reset == 2:
+            document['state'] = 'waiting'
+            remove_directory(job_directory)            
+            database.put(config.db_server, config.db_name, config.db_auth, document['_id'], json.dumps(document))
+        elif reset == 3:
+            pass
+        else:
+            print "Unacceptable input"
+            query_reset(document, message, job_directory)
+    except ValueError:
+        print "Unacceptable input"
+        query_reset(document, message, job_directory)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('config_file', help="Configuration file")
+    args = parser.parse_args()
+
+    config.parse_file(args.config_file)
+
+    # Get jobs with submitted statuses
+    submitted_rows = json.loads(database.get(
+            config.db_server, config.db_name, config.db_auth,
+            '_design/benchmark/_view/macro_by_status?key="submitted"&include_docs=true'))['rows']
+    for row in submitted_rows:
+        # Get the document location
+        document = row['doc']
+        job_directory = document.get('job_directory', None)
+        if job_directory:
+            if os.path.exists(job_directory):
+                # Job directory exists, get last touched time
+                # (rat log should be written throughout, assume > 1 hour is bad)
+                t_now = time.time()
+                last_access = None
+                for f in os.listdir(job_directory):
+                    last_access_file = os.stat(os.path.join(job_directory, f)).st_atime
+                    if last_access_file > last_access:
+                        last_access = last_access_file
+                if (t_now - last_access) > 3600:
+                    query_reset(document, 'Job {0} last accessed {1} s ago'.format(
+                            document['_id'], (t_now - last_access)), job_directory)
+                else:
+                    print "Job {0} accessed recently".format(document['_id'])
+            else:
+                query_reset(document, 'Job {0}: no job directory on this system'.format(
+                        document['_id']), job_directory)
+        else:
+            query_reset(document, 'Job {0}: no job directory in DB'.format(
+                    document['_id']), job_directory)

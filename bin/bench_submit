@@ -1,0 +1,57 @@
+#!/usr/bin/env python
+'''New submission client for benchmarking.
+'''
+
+import argparse
+import json
+import string
+
+from bench import config, backend, database
+#import config
+#import backend
+#import database
+
+templates = None
+
+def get(extension):
+    '''Call to database module using the config settings
+    '''
+    return database.get(config.db_server, config.db_name, config.db_auth, extension)
+
+
+def prepare_macro(doc):
+    '''Submit a waiting job to the requested backend
+    '''
+    macro_name = doc['name']
+    doc_id = doc['_id']
+    # Get the file from the database
+    macro_text = get('{id}/{name}'.format(id = doc_id, name = macro_name))
+    template = string.Template(macro_text);
+    return template.substitute(**templates)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('config_file', help="Configuration file")
+    args = parser.parse_args()
+
+    config.parse_file(args.config_file)
+
+    # Get the template fields (should only be one document in the database
+    template_docs = json.loads(get('_design/benchmark/_view/templates?include_docs=true'))['rows']
+    templates = template_docs[0]['doc']['templates']
+
+    # Retrieve the desired backend and perform checks
+    back = backend.get_backend()
+
+    waiting_jobs = json.loads(get('_design/benchmark/_view/macro_by_status?include_docs=true&key="waiting"'))['rows']
+    if len(waiting_jobs):
+        for row in waiting_jobs:
+            print "Prepare and submit", row['doc']['name']
+            macro_text = prepare_macro(row['doc'])
+            back.check_job(row['doc']['ratVersion'], row['doc'].get('commitHash', ''),
+                           row['doc']['_id'])
+            back.submit_job(row['doc'], macro_text)
+    else:
+        print "No jobs waiting"
+        
