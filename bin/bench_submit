@@ -38,8 +38,12 @@ if __name__ == "__main__":
     config.parse_file(args.config_file)
 
     # Get the template fields (should only be one document in the database
-    template_docs = json.loads(get('_design/benchmark/_view/templates?include_docs=true'))['rows']
-    templates = template_docs[0]['doc']['templates']
+    try:
+        template_docs = json.loads(get('_design/benchmark/_view/templates?include_docs=true'))['rows']
+        templates = template_docs[0]['doc']['templates']
+    except:
+        templates = {}
+        print 'No template found in database'
 
     # Retrieve the desired backend and perform checks
     back = backend.get_backend()
