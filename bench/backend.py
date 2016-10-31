@@ -128,20 +128,19 @@ class QSub(object):
         with open(job_file, 'r') as f_in:
             # Do this in case there are escaped strings (although the same could be said for password!)
             job_template = string.Template(f_in.read())
-            job_script = job_template.substitute(EnvAdditions = env_additions)
+            job_script = job_template.substitute(EnvAdditions = env_additions, 
+              jobdir = job_directory, ratenv = rat_environment,
+              dbserver = config.db_server, dbname = config.db_name, 
+              dbauth = config.db_auth, documentid = document['_id'], 
+              ratversion = document['ratVersion'])
             destination = os.path.join(job_directory, 'job.sh')
             with open(destination, 'w') as f_out:
                 f_out.write(job_script)
         # Submit the job, save the updated status submission metadata to the database
         job_script = os.path.join(job_directory, 'job.sh')
-        job_arguments = '{jobdir} {rat_env} {db_server} {db_name} {db_auth} {doc_id} {rat_version}'.format(\
-            jobdir = job_directory, rat_env = rat_environment,
-            db_server = config.db_server, db_name = config.db_name, db_auth = config.db_auth,
-            doc_id = document['_id'], rat_version = document['ratVersion'])
-        command = 'qsub {0} -q {1} -e {2} -o {2} {2}/job.sh {3}'.format(self.extra_options,
+        command = 'qsub {0} -q {1} -e {2} -o {2} {2}/job.sh'.format(self.extra_options,
                                                                         self.queue_name,
-                                                                        job_directory,
-                                                                        job_arguments)
+                                                                        job_directory)
         os.system(command)
         document['job_directory'] = job_directory
         document['state'] = 'submitted' # Leave as waiting for now
