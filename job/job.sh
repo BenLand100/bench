@@ -6,6 +6,6 @@ ${EnvAdditions}
 cd ${jobdir}
 source ${ratenv}
 
-python benchmark.py ${dbserver} ${dbauth} ${dbname} ${documentid} ${ratversion}
+python benchmark.py ${dbserver} ${dbname} ${dbauth} ${documentid} ${ratversion}
 # Maintain the exit status of the python script
 exit $$?
