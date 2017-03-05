@@ -4,6 +4,7 @@
 
 import argparse
 import json
+import time
 import string
 
 from bench import config, backend, database
@@ -33,29 +34,39 @@ def prepare_macro(doc):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('config_file', help="Configuration file")
+    parser.add_argument('--looptime', type=float, default=10*60, help="Time to wait between loops in seconds")
+    parser.add_argument('--noloop', action='store_true', help="Only run once (no looping)")
     args = parser.parse_args()
 
     config.parse_file(args.config_file)
+    
+    while True:
+        # Get the template fields (should only be one document in the database
+        try:
+            template_docs = json.loads(get('_design/benchmark/_view/templates?include_docs=true'))['rows']
+            templates = template_docs[0]['doc']['templates']
+        except:
+            templates = {}
+            print 'No template found in database'
 
-    # Get the template fields (should only be one document in the database
-    try:
-        template_docs = json.loads(get('_design/benchmark/_view/templates?include_docs=true'))['rows']
-        templates = template_docs[0]['doc']['templates']
-    except:
-        templates = {}
-        print 'No template found in database'
+        # Retrieve the desired backend and perform checks
+        back = backend.get_backend()
 
-    # Retrieve the desired backend and perform checks
-    back = backend.get_backend()
-
-    waiting_jobs = json.loads(get('_design/benchmark/_view/macro_by_status?include_docs=true&key="waiting"'))['rows']
-    if len(waiting_jobs):
-        for row in waiting_jobs:
-            print "Prepare and submit", row['doc']['name']
-            macro_text = prepare_macro(row['doc'])
-            back.check_job(row['doc']['ratVersion'], row['doc'].get('commitHash', ''),
-                           row['doc']['_id'])
-            back.submit_job(row['doc'], macro_text)
-    else:
-        print "No jobs waiting"
+        waiting_jobs = json.loads(get('_design/benchmark/_view/macro_by_status?include_docs=true&key="waiting"'))['rows']
+        if len(waiting_jobs):
+            for row in waiting_jobs:
+                try:
+                    print "Prepare and submit", row['doc']['name']
+                    macro_text = prepare_macro(row['doc'])
+                    back.check_job(row['doc']['ratVersion'], row['doc'].get('commitHash', ''), row['doc']['_id'])
+                    back.submit_job(row['doc'], macro_text)
+                except Exception as e:
+                    print 'Failed: ', e
+        else:
+            print "No jobs waiting"
         
+        if args.noloop:
+            break
+        else:
+            time.sleep(args.looptime)
+            

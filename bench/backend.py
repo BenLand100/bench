@@ -91,10 +91,8 @@ class QSub(object):
             env_path = os.path.join(self.install_directory, 'rat-{0}'.format(commit_hash))
             # Always try to install the software
             # Need to install the software
-            base_environment, env_additions = get_base_env_path(self.sw_install_type, self.sw_directory, 
-                                                                rat_version)
-            installer.install_rat_snapshot(self.install_directory, commit_hash, base_environment, 
-                                           config.github_token, env_additions)
+            base_environment, env_additions = get_base_env_path(self.sw_install_type, self.sw_directory, rat_version)
+            installer.install_rat_snapshot(self.install_directory, commit_hash, base_environment, config.github_token, env_additions)
 
 
     def submit_job(self, document, macro_text):

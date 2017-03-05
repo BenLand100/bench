@@ -5,6 +5,7 @@ import urllib2
 import tarfile
 import glob
 import shutil
+import time
 from getpass import getpass
 from base64 import b64encode
 
@@ -12,7 +13,7 @@ from base64 import b64encode
 # as this may run on a backend (e.g. Dirac) to download snapshots
 
 def download_snapshot(fork, commit_hash, filename, token,
-                      retries = 0, retry_limit = 3):
+                      retries = 0, retry_limit = 10):
     '''Download RAT.
     '''
     url = "https://api.github.com/repos/{0}/rat/tarball/{1}".format(fork, commit_hash)
@@ -27,8 +28,9 @@ def download_snapshot(fork, commit_hash, filename, token,
         download_size = int(remote_file.info().getheaders("Content-Length")[0])
     except IndexError:
         if retries > retry_limit:
-            raise
+            raise RuntimeError('Could not download 
         else:
+            time.sleep(5) #wait a bit before trying again.
             download_snapshot(fork, commit_hash, filename, token, retries+1, retry_limit)
     with open(filename, 'wb') as local_file:
         local_file.write(remote_file.read())
